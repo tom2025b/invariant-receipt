@@ -23,16 +23,26 @@ from pathlib import Path
 from . import engine, sandbox, spec
 from . import summary as summ
 from .identity import build_identity, describe
+from .receipt import validate_receipt, validate_summary, write_json
 from .render import RenderError, clear_views, refused_summary, render, write_views
 
 MARKER = ".invariant-receipt-output"
 
 
+class UsageError(Exception):
+    """The command line could not be parsed. Always a refusal (exit 4)."""
+
+
 class _Parser(argparse.ArgumentParser):
+    def __init__(self, *a, **k):
+        # No abbreviations: the refusal path finds --out by exact spelling, so
+        # argparse must not accept a spelling ("--ou") that path cannot see.
+        k.setdefault("allow_abbrev", False)
+        super().__init__(*a, **k)
+
     def error(self, message):  # noqa: D401 - argparse API
         self.print_usage(sys.stderr)
-        print(f"{self.prog}: error: {message}", file=sys.stderr)
-        sys.exit(summ.EXIT_REFUSED)
+        raise UsageError(f"{self.prog}: error: {message}")
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -124,12 +134,100 @@ def _rel_inside(path: Path, root: Path) -> str | None:
         return None
 
 
+def _one_line(exc: BaseException) -> str:
+    text = str(exc).strip().splitlines()
+    return f"{type(exc).__name__}: {text[-1] if text else ''}".rstrip(": ")
+
+
 def _write_refusal(out: Path, tool: dict, reason: str, detail: str) -> None:
     try:
         clear_views(out)
         write_views(out, refused_summary(tool, reason, detail), [], tool)
-    except Exception:  # the refusal itself is still printed and exits 4
-        traceback.print_exc()
+    except Exception as exc:  # the refusal itself is still printed and exits 4
+        print(
+            f"invariant-receipt: could not write the refusal summary: {_one_line(exc)}",
+            file=sys.stderr,
+        )
+
+
+def _out_from_argv(argv: list[str]) -> Path:
+    """The --out a ``run`` command line asked for (last one wins, as in argparse)."""
+    out = Path("receipts")
+    for i, tok in enumerate(argv):
+        if tok == "--out" and i + 1 < len(argv):
+            out = Path(argv[i + 1])
+        elif tok.startswith("--out="):
+            out = Path(tok.split("=", 1)[1])
+    return out
+
+
+def _refuse_bad_command_line(argv: list[str], tool: dict, message: str) -> int:
+    """A ``run`` whose arguments do not parse still clears stale evidence.
+
+    Without this, a previous run's CAUGHT receipts and exit-0 summary would sit
+    untouched next to a refused command (Codex review of PR #1, finding 4).
+    """
+    print(message, file=sys.stderr)
+    first = next((t for t in argv if not t.startswith("-")), None)
+    if first != "run":
+        return summ.EXIT_REFUSED
+    out = _out_from_argv(argv).resolve()
+    try:
+        prepare_out(out)
+    except (Refused, OSError) as exc:
+        detail = exc.detail if isinstance(exc, Refused) else str(exc)
+        print(f"invariant-receipt: refused: {detail}", file=sys.stderr)
+        return summ.EXIT_REFUSED
+    _write_refusal(out, tool, "bad_arguments", message)
+    return summ.EXIT_REFUSED
+
+
+def _render_failed(out: Path, tool: dict, pending: list, exc: BaseException) -> int:
+    """The views could not be built after the receipts were final.
+
+    The crash contract: durable UNKNOWN evidence and no traceback. Every
+    receipt is rewritten as UNKNOWN (its earlier verdict kept in the detail),
+    and a summary is written by the simplest path still available.
+    """
+    detail = f"the views could not be rendered: {_one_line(exc)}"
+    print(f"invariant-receipt: internal error: {detail}", file=sys.stderr)
+    for p in pending:
+        r = p.receipt
+        if r["verdict"] != "UNKNOWN" or r["reason"] != "internal_error":
+            r["reason_detail"] = (
+                f"{detail}. Before that failure this receipt's verdict was "
+                f"{r['verdict']} ({r['reason']}): {r['reason_detail']}"
+            )
+            r["verdict"], r["reason"] = "UNKNOWN", "internal_error"
+        try:
+            validate_receipt(r)
+            write_json(p.path, r)
+        except Exception as exc2:
+            print(
+                f"invariant-receipt: could not rewrite {p.path}: {_one_line(exc2)}", file=sys.stderr
+            )
+    try:
+        clear_views(out)
+    except OSError:
+        pass
+    receipts = [p.receipt for p in pending]
+    try:
+        summary = summ.build(receipts, tool)
+        validate_summary(summary)
+    except Exception:
+        summary = {
+            "schema": "invariant-receipt/summary/1",
+            "tool": tool,
+            "exit_code": summ.EXIT_UNKNOWN,
+            "refused": {"reason": "internal_error", "detail": detail},
+            "invariants": [],
+        }
+    try:
+        write_json(out / "summary.json", summary)
+        (out / "pr-summary.txt").write_text(f"UNKNOWN — {detail}\n", encoding="utf-8")
+    except Exception as exc3:
+        print(f"invariant-receipt: could not write the summary: {_one_line(exc3)}", file=sys.stderr)
+    return summ.EXIT_UNKNOWN
 
 
 def cmd_run(args, tool: dict) -> int:
@@ -182,9 +280,11 @@ def cmd_run(args, tool: dict) -> int:
         print(f"invariant-receipt: refused ({exc.reason}): {exc.detail}", file=sys.stderr)
         _write_refusal(out, tool, exc.reason, exc.detail)
         return summ.EXIT_REFUSED
-    except Exception:
+    except Exception as exc:
         detail = traceback.format_exc(limit=6)
-        print(f"invariant-receipt: internal error before any run:\n{detail}", file=sys.stderr)
+        print(
+            f"invariant-receipt: internal error before any run: {_one_line(exc)}", file=sys.stderr
+        )
         _write_refusal(out, tool, "internal_error", detail[-1500:])
         return summ.EXIT_UNKNOWN
 
@@ -234,7 +334,15 @@ def cmd_run(args, tool: dict) -> int:
         after = sandbox.tree_state(repo, excludes)
     except Exception as exc:
         after_error = str(exc)
-    engine.finalize(pending, after, before, after_error)
+    try:
+        engine.finalize(pending, after, before, after_error)
+    except Exception as exc:
+        # Receipts stay as written during the run: provisional, UNKNOWN.
+        print(
+            f"invariant-receipt: internal error while finalising receipts: {_one_line(exc)}",
+            file=sys.stderr,
+        )
+        return summ.EXIT_UNKNOWN
     if after is not None and (after.hash != before.hash or after.status != before.status):
         print(
             "invariant-receipt: WARNING — THE ORIGINAL WORKING TREE CHANGED DURING THE RUN. "
@@ -248,17 +356,17 @@ def cmd_run(args, tool: dict) -> int:
 
     try:
         summary = render(out, tool)
-    except Exception:
-        traceback.print_exc()
-        return (
-            summ.EXIT_UNKNOWN
-            if not any(p.receipt["verdict"] == "SURVIVED" for p in pending)
-            else summ.EXIT_SURVIVED
-        )
+    except Exception as exc:
+        return _render_failed(out, tool, pending, exc)
     for inv in summary["invariants"]:
         print(inv["pr_line"])
     if crash:
-        print(f"invariant-receipt: the run stopped early:\n{crash}", file=sys.stderr)
+        last = crash.strip().splitlines()[-1] if crash.strip() else "unknown"
+        print(
+            f"invariant-receipt: the run stopped early ({last}); the unfinished receipts say "
+            "UNKNOWN and carry the details",
+            file=sys.stderr,
+        )
     return summary["exit_code"]
 
 
@@ -268,14 +376,25 @@ def cmd_render(args, tool: dict) -> int:
     except RenderError as exc:
         print(f"invariant-receipt: refused: {exc}", file=sys.stderr)
         return summ.EXIT_REFUSED
+    except Exception as exc:
+        # render() clears the old views before building new ones, so a failure
+        # here leaves no stale view behind; the receipts themselves are untouched.
+        print(
+            f"invariant-receipt: internal error while rendering: {_one_line(exc)}", file=sys.stderr
+        )
+        return summ.EXIT_UNKNOWN
     for inv in summary["invariants"]:
         print(inv["pr_line"])
     return summary["exit_code"]
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
+    argv = list(sys.argv[1:] if argv is None else argv)
     tool = build_identity()
+    try:
+        args = _parser().parse_args(argv)
+    except UsageError as exc:
+        return _refuse_bad_command_line(argv, tool, str(exc))
     if args.version:
         print(describe(tool))
         return 0

@@ -120,6 +120,19 @@ mod tests {
     /// substring filter. When the rule breaks THIS test fails while the weak
     /// one passes: the run exits non-zero, and the verdict must still be
     /// SURVIVED, because only the named test's own result counts.
+    /// Passes. Its name also selects `sibling_green_neighbour_is_red`, which
+    /// always fails: the baseline run is NOT fully green, so no mutation of an
+    /// invariant naming this test may be credited (Codex review, finding 2).
+    #[test]
+    fn sibling_green() {
+        assert_eq!(clamp_percent(-3), 0);
+    }
+
+    #[test]
+    fn sibling_green_neighbour_is_red() {
+        panic!("this sibling is red on the unmodified code");
+    }
+
     #[test]
     fn register_accepts_new_id_then_rejects_it_again() {
         let mut r = Registry::new();

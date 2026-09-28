@@ -119,6 +119,18 @@ invariants:
         replace: "if false {"
         expect: {outcome: fail}
 
+  # The named test passes at baseline but a sibling selected by the same
+  # filter fails (exit 101) -> the baseline is not fully green ->
+  # baseline_not_stable for every mutation (Codex review of PR #1, finding 2).
+  - invariant: baseline-sibling-red
+    test: tests::sibling_green
+    mutations:
+      - id: break-clamp
+        file: src/lib.rs
+        find: "    if v < 0 {\n        0\n"
+        replace: "    if v < 0 {\n        1\n"
+        expect: {outcome: fail}
+
   # A test filter that selects nothing at baseline — "running 0 tests ... ok",
   # exit 0, which looks like success -> baseline_no_tests.
   - invariant: filter-selects-nothing

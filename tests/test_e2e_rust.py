@@ -21,6 +21,7 @@ MAIN = [
     "patch-form",
     "filter-selects-nothing",
     "name-matches-no-single-test",
+    "baseline-sibling-red",
 ]
 
 EXPECTED = {
@@ -40,6 +41,7 @@ EXPECTED = {
     ("invalid-cases", "second-test-with-the-same-name"): ("INVALID", "named_test_not_observed"),
     ("patch-form", "drop-the-check-as-patch"): ("CAUGHT", "caught"),
     ("filter-selects-nothing", "drop-the-check"): ("INVALID", "baseline_no_tests"),
+    ("baseline-sibling-red", "break-clamp"): ("INVALID", "baseline_not_stable"),
     ("name-matches-no-single-test", "drop-the-check"): ("INVALID", "named_test_not_found"),
 }
 
@@ -52,6 +54,7 @@ STATUSES = {
     "patch-form": "ONE-WAY",
     "filter-selects-nothing": "INCOMPLETE",
     "name-matches-no-single-test": "INCOMPLETE",
+    "baseline-sibling-red": "INCOMPLETE",
 }
 
 PARSER = {"nextest": "nextest-junit", "cargo": "cargo-text"}
@@ -138,6 +141,19 @@ def test_same_assertion_with_different_values_is_one_way(runs, runner):
     for r in rs.values():
         if r["verdict"] == "CAUGHT":
             assert r["mutation"]["run"]["failure_signature_kind"] == "location"
+
+
+@pytest.mark.parametrize("runner", ["nextest", "cargo"])
+def test_a_red_sibling_at_baseline_poisons_the_invariant(runs, runner):
+    """Codex review finding 2, end to end: the named test passed at baseline,
+    its sibling failed, the runner exited non-zero -> nothing is credited."""
+    _repo, results = runs
+    r = receipts(results[runner][0])[("baseline-sibling-red", "break-clamp")]
+    (base,) = r["baseline"]["runs"]
+    assert base["named_test"] == "passed" and base["failed"] == 1 and base["exit"] != 0
+    assert (r["verdict"], r["reason"]) == ("INVALID", "baseline_not_stable")
+    assert "sibling_green_neighbour_is_red" in r["reason_detail"]
+    assert r["mutation"]["run"] is None
 
 
 def test_both_rust_parsers_agree_on_every_verdict_and_signature(runs):

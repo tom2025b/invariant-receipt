@@ -142,6 +142,22 @@ def baseline_problem(ev: Evidence) -> Decision | None:
                 "baseline_not_stable",
                 f"{where}: the named test was {result} on the unmodified code",
             )
+        # The whole baseline run must be green, not just the named test: a red
+        # sibling or a failed process means the unmodified code is not in a
+        # known-good state, so no mutation result can be credited against it.
+        red = not_fully_green(run)
+        if red:
+            return Decision(INVALID, "baseline_not_stable", f"{where}: {red}")
+    return None
+
+
+def not_fully_green(run: RunObservation) -> str | None:
+    """Why a run is not fully green (any failed/errored test, or a non-zero exit), or None."""
+    bad = [f"{c.name} {c.result}" for c in run.cases if c.result in ("failed", "error", "timeout")]
+    if bad:
+        return "other test(s) in the run were not green: " + ", ".join(bad[:10])
+    if run.exit != 0:
+        return f"the runner exited {run.exit} although every parsed test passed"
     return None
 
 

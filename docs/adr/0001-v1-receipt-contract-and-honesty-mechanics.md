@@ -57,7 +57,11 @@ flowchart LR
    both honour, so the same break gets the same verdict under either parser.
 7. **Baseline reasons.** At baseline: zero tests → `baseline_no_tests`; tests
    ran but none with the exact name (or more than one) → `named_test_not_found`;
-   named test red/skipped on any repeat → `baseline_not_stable`; build failure,
+   named test red/skipped on any repeat → `baseline_not_stable`; **any other
+   test in the run failed/errored, or the runner exited non-zero, on any repeat
+   → `baseline_not_stable`** (the whole baseline run must be green — added after
+   the Codex review of PR #1, finding 2; a red sibling had let a later failure of
+   the named test be credited as CAUGHT); build failure,
    collection failure and timeout keep their own reasons. At the mutation
    stage zero tests is `zero_tests`. The §9 row "a filter that selects nothing
    → zero_tests" is exercised by a mutation that renames the test; a filter
@@ -79,6 +83,26 @@ flowchart LR
    location back to the original numbering; a failure inside lines the
    mutation inserted is named as such.
 
+11. **Captured output is never harness evidence** (Codex review, finding 1).
+   The cargo-text parser takes results only from the N lines libtest prints
+   right after `running N tests`, and skips a failing test's captured output as
+   one region, ending at the closing `failures:` list that names exactly this
+   block's failed tests. A test that prints a nested `cargo test` log can no
+   longer invent a result for a test that does not exist. Residual: a test
+   whose captured output reproduces the closing list with the same failed
+   names, or a test that writes past the capture (a child process on the
+   inherited stdout), can still confuse text parsing; the summary-count
+   cross-check turns most such confusion into UNKNOWN. nextest's per-test
+   JUnit does not have this exposure.
+12. **Diff hunks are consumed by count** (Codex review, finding 3). A body
+   line such as `--- old` (a deleted `-- old`) is content, not a file header.
+13. **Every exit path leaves durable evidence and no traceback** (Codex
+   review, findings 4–5). A `run` whose arguments do not parse still empties
+   the tool's output directory and writes a REFUSED summary (exit 4). A
+   failure while rendering the views, after receipts are final, rewrites every
+   receipt as `UNKNOWN: internal_error` (earlier verdict kept in the detail)
+   and writes a summary (exit 3).
+
 ## Alternatives considered
 
 - *Rewrite the project's nextest config to force our store.* Rejected: it
@@ -99,3 +123,4 @@ flowchart LR
 
 **Signed:** max (lane E1) · 2026-09-28T16:45:00-04:00
 **Amended:** max (lane E1) · 2026-09-28T17:20:00-04:00 — decisions 3 and 9 confirmed/changed by Tom; decision 10 added
+**Amended:** max (lane E1) · 2026-09-28T18:10:00-04:00 — repair cycle 1 after the Codex review: decision 7 tightened, decisions 11–13 added

@@ -44,25 +44,49 @@ def _location(text: str) -> str | None:
     return None
 
 
-_DIFF_FILE_RE = re.compile(r"^\+\+\+ b/(?P<path>.+)$")
-_HUNK_RE = re.compile(r"^@@ -(?P<os>\d+)(?:,\d+)? \+(?P<ns>\d+)(?:,\d+)? @@")
+_DIFF_FILE_RE = re.compile(r"^\+\+\+ (?:b/(?P<path>.+)|/dev/null)$")
+_HUNK_RE = re.compile(r"^@@ -(?P<os>\d+)(?:,(?P<ol>\d+))? \+(?P<ns>\d+)(?:,(?P<nl>\d+))? @@")
 
 
 def parse_diff(diff: str) -> dict[str, list[tuple[int, int, list[str]]]]:
-    """Per changed file: its hunks as (old_start, new_start, body lines)."""
+    """Per changed file: its hunks as (old_start, new_start, body lines).
+
+    A hunk header states how many old and new lines its body holds, and the
+    body is consumed by COUNT, never by what a line looks like: a deleted
+    source line "-- old" appears in the diff as "--- old", and an added "++ x"
+    as "+++ x". Those are hunk content. File headers are only recognised
+    outside a hunk body.
+    """
     files: dict[str, list[tuple[int, int, list[str]]]] = {}
     current: list | None = None
+    old_left = new_left = 0
     for line in diff.splitlines():
+        if old_left > 0 or new_left > 0:
+            tag = line[:1]
+            if tag == "\\":  # "\ No newline at end of file"
+                continue
+            if tag in (" ", ""):
+                old_left -= 1
+                new_left -= 1
+            elif tag == "-":
+                old_left -= 1
+            elif tag == "+":
+                new_left -= 1
+            else:
+                raise ValueError(f"unexpected line inside a diff hunk: {line[:80]!r}")
+            if current is not None:
+                current[-1][2].append(line if line else " ")
+            continue
         m = _DIFF_FILE_RE.match(line)
         if m:
-            current = files.setdefault(m["path"], [])
+            current = files.setdefault(m["path"], []) if m["path"] else None
             continue
         m = _HUNK_RE.match(line)
-        if m and current is not None:
-            current.append((int(m["os"]), int(m["ns"]), []))
-            continue
-        if current and line[:1] in (" ", "+", "-") and not line.startswith(("+++", "---")):
-            current[-1][2].append(line)
+        if m:
+            old_left = int(m["ol"]) if m["ol"] is not None else 1
+            new_left = int(m["nl"]) if m["nl"] is not None else 1
+            if current is not None:
+                current.append((int(m["os"]), int(m["ns"]), []))
     return files
 
 

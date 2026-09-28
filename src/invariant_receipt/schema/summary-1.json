@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "invariant-receipt/summary/1",
+  "title": "Invariant Receipt — run summary",
+  "type": "object",
+  "required": ["schema", "tool", "exit_code", "refused", "invariants"],
+  "properties": {
+    "schema": {"const": "invariant-receipt/summary/1"},
+    "tool": {"type": "object", "required": ["name", "version", "commit"]},
+    "exit_code": {"enum": [0, 1, 2, 3, 4]},
+    "refused": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "object", "required": ["reason", "detail"], "properties": {"reason": {"type": "string"}, "detail": {"type": "string"}}}
+      ]
+    },
+    "invariants": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["invariant", "status", "pr_line", "counts", "mutations"],
+        "properties": {
+          "invariant": {"type": "string"},
+          "status": {"enum": ["GAP FOUND", "TWO-WAY VERIFIED", "ONE-WAY", "INCOMPLETE"]},
+          "pr_line": {"type": "string"},
+          "counts": {"type": "object"},
+          "mutations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "verdict", "reason", "receipt"],
+              "properties": {
+                "id": {"type": "string"},
+                "verdict": {"enum": ["CAUGHT", "SURVIVED", "INVALID", "UNKNOWN"]},
+                "reason": {"type": "string"},
+                "receipt": {"type": "string"}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

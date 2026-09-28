@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="0.024" timestamp="2026-09-28T15:54:52.818093-04:00" hostname="Titan"><testcase classname="tests.test_ids" name="test_rejects_duplicate_id" time="0.001"><failure message="Failed: DID NOT RAISE ValueError">def test_rejects_duplicate_id():
+        """The good test: checks both halves of the invariant."""
+        registry = Registry()
+        registry.register(7)
+&gt;       with pytest.raises(ValueError, match="duplicate"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+tests/test_ids.py:14: Failed</failure></testcase></testsuite></testsuites>

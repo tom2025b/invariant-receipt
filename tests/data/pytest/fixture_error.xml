@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="0" skipped="0" tests="1" time="0.026" timestamp="2026-09-28T15:54:53.725924-04:00" hostname="Titan"><testcase classname="tests.test_ids" name="test_rejects_duplicate_id" time="0.001"><error message="failed on setup with &quot;file /SCRATCH/tests/test_ids.py, line 10&#10;  def test_rejects_duplicate_id(no_such_fixture):&#10;E       fixture 'no_such_fixture' not found&#10;&gt;       available fixtures: capfd, capfdbinary, caplog, capsys, capsysbinary, capteesys, doctest_namespace, monkeypatch, pytestconfig, record_property, record_testsuite_property, record_xml_attribute, recwarn, subtests, tmp_path, tmp_path_factory, tmpdir, tmpdir_factory&#10;&gt;       use 'pytest --fixtures [testpath]' for help on them.&#10;&#10;/SCRATCH/tests/test_ids.py:10&quot;">file /SCRATCH/tests/test_ids.py, line 10
+  def test_rejects_duplicate_id(no_such_fixture):
+E       fixture 'no_such_fixture' not found
+&gt;       available fixtures: capfd, capfdbinary, caplog, capsys, capsysbinary, capteesys, doctest_namespace, monkeypatch, pytestconfig, record_property, record_testsuite_property, record_xml_attribute, recwarn, subtests, tmp_path, tmp_path_factory, tmpdir, tmpdir_factory
+&gt;       use 'pytest --fixtures [testpath]' for help on them.
+
+/SCRATCH/tests/test_ids.py:10</error></testcase></testsuite></testsuites>

@@ -1,0 +1,154 @@
+# Fixture invariants for invariant-receipt's own tests (spec §9), Rust side.
+# Every case runs under BOTH cargo-nextest and `cargo test` text parsing, and
+# must produce the same verdicts; only the receipt's runner.parser differs.
+invariants:
+  # Two breaks that fail the good test in different ways -> TWO-WAY VERIFIED.
+  - invariant: dup-ids-two-way
+    description: Registering the same ID twice is rejected, and the rejection stores nothing.
+    test: tests::rejects_duplicate_id
+    mutations:
+      - id: drop-the-check
+        file: src/lib.rs
+        find: "if self.seen.contains(&id) {"
+        replace: "if false {"
+        expect: {outcome: fail, matches: "second registration must be rejected"}
+      - id: store-then-reject
+        file: src/lib.rs
+        find: '            return Err(format!("duplicate id {id}"));'
+        replace: "            self.seen.push(id);\n            return Err(format!(\"duplicate id {id}\"));"
+        expect: {outcome: fail, matches: "registry must hold one entry"}
+
+  # Two different breaks that trip the same assertion the same way -> ONE-WAY.
+  - invariant: dup-ids-one-way
+    test: tests::rejects_duplicate_id
+    mutations:
+      - id: drop-the-check
+        file: src/lib.rs
+        find: "if self.seen.contains(&id) {"
+        replace: "if false {"
+        expect: {outcome: fail}
+      - id: look-for-the-wrong-id
+        file: src/lib.rs
+        find: "if self.seen.contains(&id) {"
+        replace: "if self.seen.contains(&(id + 1000)) {"
+        expect: {outcome: fail}
+
+  # Two breaks that trip the SAME assertion with DIFFERENT values in its
+  # message ("left: 2" vs "left: 3") -> ONE-WAY. The signature is where the
+  # assertion fired, not what it printed (spec §4, amended 2026-09-28).
+  - invariant: same-assertion-different-values
+    test: tests::rejects_duplicate_id
+    mutations:
+      - id: store-once-then-reject
+        file: src/lib.rs
+        find: '            return Err(format!("duplicate id {id}"));'
+        replace: "            self.seen.push(id);\n            return Err(format!(\"duplicate id {id}\"));"
+        expect: {outcome: fail, matches: "registry must hold one entry"}
+      - id: store-twice-then-reject
+        file: src/lib.rs
+        find: '            return Err(format!("duplicate id {id}"));'
+        replace: "            self.seen.push(id);\n            self.seen.push(id);\n            return Err(format!(\"duplicate id {id}\"));"
+        expect: {outcome: fail, matches: "registry must hold one entry"}
+
+  # A weak test that never exercises the rule -> SURVIVED -> GAP FOUND.
+  # Its name also selects a stronger sibling test that DOES fail, so the run
+  # exits non-zero: other tests failing must not turn SURVIVED into CAUGHT.
+  - invariant: weak-test-gap
+    test: tests::register_accepts_new_id
+    mutations:
+      - id: drop-the-check
+        file: src/lib.rs
+        find: "if self.seen.contains(&id) {"
+        replace: "if false {"
+        expect: {outcome: fail}
+
+  # Mutations whose runs say nothing about the invariant -> every one INVALID.
+  - invariant: invalid-cases
+    test: tests::rejects_duplicate_id
+    mutations:
+      - id: compile-break
+        file: src/lib.rs
+        find: "if self.seen.contains(&id) {"
+        replace: "if self.seen.contains(id) {"
+        expect: {outcome: fail}
+      - id: wrong-oracle
+        file: src/lib.rs
+        find: "if self.seen.contains(&id) {"
+        replace: "if false {"
+        expect: {outcome: fail, matches: "this text never appears in the failure"}
+      - id: find-not-present
+        file: src/lib.rs
+        find: "this text is not in the file"
+        replace: "anything"
+        expect: {outcome: fail}
+      - id: changes-nothing
+        file: src/lib.rs
+        find: "if self.seen.contains(&id) {"
+        replace: "if self.seen.contains(&id) {"
+        expect: {outcome: fail}
+      - id: rename-the-test
+        file: src/lib.rs
+        find: "fn rejects_duplicate_id() {"
+        replace: "fn renamed_away() {"
+        expect: {outcome: fail}
+      - id: ignore-the-test
+        file: src/lib.rs
+        find: "    /// The good test: checks both halves of the invariant.\n    #[test]"
+        replace: "    #[test]\n    #[ignore]"
+        expect: {outcome: fail}
+
+      - id: second-test-with-the-same-name
+        patch: mutations/shadow-test.diff
+        expect: {outcome: fail}
+
+  # The same break written as a patch -> CAUGHT, same fingerprint as find/replace.
+  - invariant: patch-form
+    test: tests::rejects_duplicate_id
+    mutations:
+      - id: drop-the-check-as-patch
+        patch: mutations/drop-the-check.diff
+        expect: {outcome: fail, matches: "must be rejected"}
+
+  # A test that passes only some of the time -> baseline_not_stable (with --repeat 5).
+  - invariant: flaky-baseline
+    test: tests::flaky_on_alternate_runs
+    mutations:
+      - id: drop-the-check
+        file: src/lib.rs
+        find: "if self.seen.contains(&id) {"
+        replace: "if false {"
+        expect: {outcome: fail}
+
+  # The named test passes at baseline but a sibling selected by the same
+  # filter fails (exit 101) -> the baseline is not fully green ->
+  # baseline_not_stable for every mutation (Codex review of PR #1, finding 2).
+  - invariant: baseline-sibling-red
+    test: tests::sibling_green
+    mutations:
+      - id: break-clamp
+        file: src/lib.rs
+        find: "    if v < 0 {\n        0\n"
+        replace: "    if v < 0 {\n        1\n"
+        expect: {outcome: fail}
+
+  # A test filter that selects nothing at baseline — "running 0 tests ... ok",
+  # exit 0, which looks like success -> baseline_no_tests.
+  - invariant: filter-selects-nothing
+    test: tests::does_not_exist
+    mutations:
+      - id: drop-the-check
+        file: src/lib.rs
+        find: "if self.seen.contains(&id) {"
+        replace: "if false {"
+        expect: {outcome: fail}
+
+  # A name that selects a test by substring, but no test has exactly that
+  # name -> named_test_not_found.
+  - invariant: name-matches-no-single-test
+    test: tests::rejects_duplicate
+    mutations:
+      - id: drop-the-check
+        file: src/lib.rs
+        find: "if self.seen.contains(&id) {"
+        replace: "if false {"
+        expect: {outcome: fail}

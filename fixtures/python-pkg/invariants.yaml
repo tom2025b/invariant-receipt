@@ -1,0 +1,173 @@
+# Fixture invariants for invariant-receipt's own tests (spec §9).
+# Each invariant is chosen to produce one known verdict. The tool's tests copy
+# this package into a fresh git repository and run the tool against it.
+invariants:
+  # Two breaks that fail the good test in different ways -> TWO-WAY VERIFIED.
+  - invariant: dup-ids-two-way
+    description: Registering the same ID twice is rejected, and the rejection stores nothing.
+    test: tests/test_ids.py::test_rejects_duplicate_id
+    mutations:
+      - id: drop-the-check
+        file: src/irfix/ids.py
+        find: "if new_id in self._seen:"
+        replace: "if False:"
+        expect: {outcome: fail, matches: "DID NOT RAISE"}
+      - id: store-then-reject
+        file: src/irfix/ids.py
+        find: '            raise ValueError(f"duplicate id {new_id}")'
+        replace: "            self._seen.append(new_id)\n            raise ValueError(f\"duplicate id {new_id}\")"
+        expect: {outcome: fail, matches: "one entry"}
+
+  # Two different breaks that trip the same assertion the same way -> ONE-WAY.
+  - invariant: dup-ids-one-way
+    test: tests/test_ids.py::test_rejects_duplicate_id
+    mutations:
+      - id: drop-the-check
+        file: src/irfix/ids.py
+        find: "if new_id in self._seen:"
+        replace: "if False:"
+        expect: {outcome: fail}
+      - id: look-for-the-wrong-id
+        file: src/irfix/ids.py
+        find: "if new_id in self._seen:"
+        replace: "if new_id + 1000 in self._seen:"
+        expect: {outcome: fail}
+
+  # Two breaks that trip the SAME assertion with DIFFERENT values in its
+  # message ("assert 2 == 1" vs "assert 3 == 1") -> ONE-WAY. The signature is
+  # where the assertion fired, not what it printed (spec §4, amended 2026-09-28).
+  - invariant: same-assertion-different-values
+    test: tests/test_ids.py::test_rejects_duplicate_id
+    mutations:
+      - id: store-once-then-reject
+        file: src/irfix/ids.py
+        find: '            raise ValueError(f"duplicate id {new_id}")'
+        replace: "            self._seen.append(new_id)\n            raise ValueError(f\"duplicate id {new_id}\")"
+        expect: {outcome: fail, matches: "one entry"}
+      - id: store-twice-then-reject
+        file: src/irfix/ids.py
+        find: '            raise ValueError(f"duplicate id {new_id}")'
+        replace: "            self._seen.append(new_id)\n            self._seen.append(new_id)\n            raise ValueError(f\"duplicate id {new_id}\")"
+        expect: {outcome: fail, matches: "one entry"}
+
+  # A weak test that never exercises the rule -> SURVIVED -> GAP FOUND.
+  - invariant: weak-test-gap
+    test: tests/test_ids.py::test_accepts_new_id
+    mutations:
+      - id: drop-the-check
+        file: src/irfix/ids.py
+        find: "if new_id in self._seen:"
+        replace: "if False:"
+        expect: {outcome: fail}
+
+  # Mutations whose runs say nothing about the invariant -> every one INVALID.
+  - invariant: invalid-cases
+    test: tests/test_ids.py::test_rejects_duplicate_id
+    mutations:
+      - id: compile-break
+        file: src/irfix/ids.py
+        find: "if new_id in self._seen:"
+        replace: "if new_id in self._seen"
+        expect: {outcome: fail}
+      - id: wrong-oracle
+        file: src/irfix/ids.py
+        find: "if new_id in self._seen:"
+        replace: "if False:"
+        expect: {outcome: fail, matches: "this text never appears in the failure"}
+      - id: import-break
+        file: src/irfix/ids.py
+        find: "class Registry:"
+        replace: "import irfix_no_such_module  # noqa\n\n\nclass Registry:"
+        expect: {outcome: fail}
+      - id: find-not-present
+        file: src/irfix/ids.py
+        find: "this text is not in the file"
+        replace: "anything"
+        expect: {outcome: fail}
+      - id: find-matches-twice
+        file: src/irfix/ids.py
+        find: "return"
+        replace: "return  "
+        expect: {outcome: fail}
+      - id: changes-nothing
+        file: src/irfix/ids.py
+        find: "if new_id in self._seen:"
+        replace: "if new_id in self._seen:"
+        expect: {outcome: fail}
+      - id: rename-the-test
+        file: tests/test_ids.py
+        find: "def test_rejects_duplicate_id():"
+        replace: "def test_renamed_away():"
+        expect: {outcome: fail}
+      - id: skip-the-test
+        file: tests/test_ids.py
+        find: '    """The good test: checks both halves of the invariant."""'
+        replace: '    pytest.skip("skipped by a mutation")'
+        expect: {outcome: fail}
+      - id: fixture-error
+        file: tests/test_ids.py
+        find: "def test_rejects_duplicate_id():"
+        replace: "def test_rejects_duplicate_id(no_such_fixture):"
+        expect: {outcome: fail}
+      - id: patch-does-not-apply
+        patch: mutations/does-not-apply.diff
+        expect: {outcome: fail}
+
+  # The same break written as a patch -> CAUGHT, same fingerprint as the find/replace form.
+  - invariant: patch-form
+    test: tests/test_ids.py::test_rejects_duplicate_id
+    mutations:
+      - id: drop-the-check-as-patch
+        patch: mutations/drop-the-check.diff
+        expect: {outcome: fail, matches: "DID NOT RAISE"}
+
+  # A test that passes only some of the time -> baseline_not_stable (with --repeat 5).
+  - invariant: flaky-baseline
+    test: tests/test_ids.py::test_flaky_on_alternate_runs
+    mutations:
+      - id: drop-the-check
+        file: src/irfix/ids.py
+        find: "if new_id in self._seen:"
+        replace: "if False:"
+        expect: {outcome: fail}
+
+  # A test filter that selects nothing at baseline -> baseline_no_tests.
+  - invariant: filter-selects-nothing
+    test: tests/test_ids.py::test_does_not_exist
+    mutations:
+      - id: drop-the-check
+        file: src/irfix/ids.py
+        find: "if new_id in self._seen:"
+        replace: "if False:"
+        expect: {outcome: fail}
+
+  # A name that selects tests, none of them called exactly that -> named_test_not_found.
+  - invariant: name-matches-no-single-test
+    test: tests/test_ids.py::test_clamps
+    mutations:
+      - id: break-clamp
+        file: src/irfix/ids.py
+        find: "        return 100"
+        replace: "        return 101"
+        expect: {outcome: fail}
+
+  # A break that hangs -> INVALID: timeout (run with a short --timeout).
+  - invariant: hangs
+    test: tests/test_ids.py::test_rejects_duplicate_id
+    mutations:
+      - id: infinite-loop
+        file: src/irfix/ids.py
+        find: "self._seen.append(new_id)"
+        replace: "while True:\n                pass"
+        expect: {outcome: fail}
+
+  # A test that writes into the ORIGINAL checkout (when IR_FIXTURE_TOUCH points
+  # there) -> the whole run is UNKNOWN: source_tree_changed.
+  - invariant: escapes-the-sandbox
+    test: tests/test_ids.py::test_escapes_the_sandbox
+    mutations:
+      - id: drop-the-check
+        file: src/irfix/ids.py
+        find: "if new_id in self._seen:"
+        replace: "if False:"
+        expect: {outcome: fail}

@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "invariant-receipt"
+version = "0.1.0"
+description = "Your test is green. Want a receipt showing it can turn red?"
+requires-python = ">=3.11"
+dependencies = ["PyYAML>=6", "jsonschema>=4.18"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.5"]
+
+[project.scripts]
+invariant-receipt = "invariant_receipt.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+invariant_receipt = ["schema/*.json"]
+
+[tool.pytest.ini_options]
+# Tests import the package from THIS checkout's src/, never from an install.
+# That matters for the mutation proofs: failure-atlas clones the repo and runs
+# pytest in the clone, and the clone's mutated source is what must be tested.
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-p no:cacheprovider"
+markers = [
+    "e2e: runs the real tool end to end against the fixture projects",
+    "rust: needs cargo (and cargo-nextest for the nextest cases)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+# The formatter owns line length; long string literals are left as written.
+ignore = ["E501"]

@@ -1,0 +1,32 @@
+   Compiling ir-fixture v0.1.0 (/SCRATCH/mut)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.23s
+     Running unittests src/lib.rs (/mnt/builds2/targets/invariant-receipt/record/debug/deps/ir_fixture-91b44c34747aaa3c)
+
+running 5 tests
+test tests::clamps_high_values ... ok
+test tests::rejects_duplicate_id ... FAILED
+test tests::register_accepts_new_id ... ok
+test tests::flaky_on_alternate_runs ... FAILED
+test tests::duplicate_panics_when_unwrapped - should panic ... ok
+
+failures:
+
+---- tests::rejects_duplicate_id stdout ----
+
+thread 'tests::rejects_duplicate_id' (805976) panicked at src/lib.rs:88:14:
+second registration must be rejected: ()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- tests::flaky_on_alternate_runs stdout ----
+
+thread 'tests::flaky_on_alternate_runs' (805974) panicked at src/lib.rs:116:9:
+flaky test failed this time
+
+
+failures:
+    tests::flaky_on_alternate_runs
+    tests::rejects_duplicate_id
+
+test result: FAILED. 3 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`

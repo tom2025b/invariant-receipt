@@ -1,0 +1,12 @@
+diff --git a/tests/shadow.rs b/tests/shadow.rs
+new file mode 100644
+--- /dev/null
++++ b/tests/shadow.rs
+@@ -0,0 +1,7 @@
++// Adds an integration test whose full name collides with the unit test the
++// invariant names, so the name no longer picks exactly one test.
++mod tests {
++    #[test]
++    fn rejects_duplicate_id() {}
++}
++

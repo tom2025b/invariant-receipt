@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="0" skipped="0" tests="1" time="0.038" timestamp="2026-09-28T15:54:51.701379-04:00" hostname="Titan"><testcase classname="tests.test_ids" name="test_rejects_duplicate_id" time="0.001" /></testsuite></testsuites>

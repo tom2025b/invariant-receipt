@@ -1,0 +1,151 @@
+{
+  "schema": "invariant-receipt/receipt/1",
+  "tool": {
+    "name": "invariant-receipt",
+    "version": "0.1.0",
+    "commit": "e2d8d3b8df6d6badd9953431a7e384fd1ba11a32",
+    "build_time": null,
+    "build": "source",
+    "dirty": true
+  },
+  "invariant": "dup-ids-two-way",
+  "description": "Registering the same ID twice is rejected, and the rejection stores nothing.",
+  "test": "tests/test_ids.py::test_rejects_duplicate_id",
+  "expect": {
+    "outcome": "fail",
+    "matches": "DID NOT RAISE"
+  },
+  "source": {
+    "repo": "/FIXTURE/repo",
+    "repo_commit": "76a6abc7ad9850c1ddc558251b539039ba56bc36",
+    "project": ".",
+    "tree_clean_before": true,
+    "tree_status_before": [],
+    "tree_hash_before": "sha256:69fd36cc96127685979a739f460da241970366f05402577d4eabcc3a28d4982f",
+    "tree_clean_after": true,
+    "tree_status_after": [],
+    "tree_hash_after": "sha256:69fd36cc96127685979a739f460da241970366f05402577d4eabcc3a28d4982f",
+    "tree_unchanged": true
+  },
+  "runner": {
+    "requested": "auto",
+    "kind": "pytest",
+    "parser": "junit-xml",
+    "version": "pytest 9.1.1",
+    "target": null
+  },
+  "baseline": {
+    "repeat": 1,
+    "compile": {
+      "status": "skipped",
+      "command": null,
+      "exit": null,
+      "seconds": null,
+      "detail": "no Python files changed",
+      "log": null
+    },
+    "runs": [
+      {
+        "command": [
+          "/home/tom/projects/invariant-receipt/.venv/bin/python",
+          "-m",
+          "pytest",
+          "-p",
+          "no:cacheprovider",
+          "-o",
+          "junit_family=xunit2",
+          "--junitxml=/TMP/work/dup-ids-two-way--baseline-work-1/junit.xml",
+          "-q",
+          "tests/test_ids.py::test_rejects_duplicate_id"
+        ],
+        "exit": 0,
+        "timed_out": false,
+        "seconds": 0.315,
+        "parser": "junit-xml",
+        "parse_error": null,
+        "collection_error": null,
+        "discovered": 1,
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "errors": 0,
+        "named_test": "passed",
+        "named_test_matches": 1,
+        "notes": [],
+        "log": "dup-ids-two-way/baseline/run-1.log",
+        "output_tail": ".                                                                        [100%]\n1 passed in 0.01s\n"
+      }
+    ],
+    "status": "green"
+  },
+  "mutation": {
+    "id": "drop-the-check",
+    "description": null,
+    "kind": "find_replace",
+    "file": "src/irfix/ids.py",
+    "find": "if new_id in self._seen:",
+    "replace": "if False:",
+    "patch": null,
+    "patch_sha256": null,
+    "fingerprint": "sha256:4c1e20dcbf67ec11b9d317ff830534a136ab35757238a867d8d535a35a0ba51d",
+    "diff": "diff --git a/src/irfix/ids.py b/src/irfix/ids.py\nindex addf15c..e39398b 100644\n--- a/src/irfix/ids.py\n+++ b/src/irfix/ids.py\n@@ -7,7 +7,7 @@ class Registry:\n         self._seen = []\n \n     def register(self, new_id):\n-        if new_id in self._seen:\n+        if False:\n             raise ValueError(f\"duplicate id {new_id}\")\n         self._seen.append(new_id)\n \n",
+    "applied": true,
+    "changed": true,
+    "apply_detail": "",
+    "compile": {
+      "status": "ok",
+      "command": [
+        "/home/tom/projects/invariant-receipt/.venv/bin/python",
+        "-c",
+        "import sys\nfor f in sys.argv[1:]:\n    compile(open(f, 'rb').read(), f, 'exec')\n",
+        "/TMP/work/dup-ids-two-way--drop-the-check/src/irfix/ids.py"
+      ],
+      "exit": 0,
+      "seconds": 0.032,
+      "detail": "",
+      "log": "dup-ids-two-way/drop-the-check/compile.log"
+    },
+    "run": {
+      "command": [
+        "/home/tom/projects/invariant-receipt/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-p",
+        "no:cacheprovider",
+        "-o",
+        "junit_family=xunit2",
+        "--junitxml=/TMP/work/dup-ids-two-way--drop-the-check-work/junit.xml",
+        "-q",
+        "tests/test_ids.py::test_rejects_duplicate_id"
+      ],
+      "exit": 1,
+      "timed_out": false,
+      "seconds": 0.315,
+      "parser": "junit-xml",
+      "parse_error": null,
+      "collection_error": null,
+      "discovered": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "errors": 0,
+      "named_test": "failed",
+      "named_test_matches": 1,
+      "notes": [],
+      "log": "dup-ids-two-way/drop-the-check/run.log",
+      "output_tail": "F                                                                        [100%]\n=================================== FAILURES ===================================\n__________________________ test_rejects_duplicate_id ___________________________\n\n    def test_rejects_duplicate_id():\n        \"\"\"The good test: checks both halves of the invariant.\"\"\"\n        registry = Registry()\n        registry.register(7)\n>       with pytest.raises(ValueError, match=\"duplicate\"):\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nE       Failed: DID NOT RAISE ValueError\n\ntests/test_ids.py:14: Failed\n=========================== short test summary info ============================\nFAILED tests/test_ids.py::test_rejects_duplicate_id - Failed: DID NOT RAISE V...\n1 failed in 0.02s\n",
+      "named_test_observed": true,
+      "named_test_result": "failed",
+      "oracle_matched": true,
+      "failure_signature_basis": "tests/test_ids.py::test_rejects_duplicate_id\n@ tests/test_ids.py:14",
+      "failure_signature": "sha256:ec18792d57781c5afd394bdd015309132d852ad78d079b11abfd1abad3e60eca",
+      "failure_excerpt": "Failed: DID NOT RAISE ValueError\ndef test_rejects_duplicate_id():\n        \"\"\"The good test: checks both halves of the invariant.\"\"\"\n        registry = Registry()\n        registry.register(7)\n>       with pytest.raises(ValueError, match=\"duplicate\"):\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nE       Failed: DID NOT RAISE ValueError\n\ntests/test_ids.py:14: Failed",
+      "failure_signature_kind": "location"
+    }
+  },
+  "verdict": "CAUGHT",
+  "reason": "caught",
+  "reason_detail": "the named test ran and failed as declared",
+  "started_at": "2026-09-28T15:52:56-04:00",
+  "finished_at": "2026-09-28T15:52:56-04:00"
+}

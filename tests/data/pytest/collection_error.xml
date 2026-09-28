@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="0" skipped="0" tests="1" time="0.025" timestamp="2026-09-28T15:54:53.225010-04:00" hostname="Titan"><testcase classname="" name="tests.test_ids" time="0.000"><error message="collection failure">ImportError while importing test module '/SCRATCH/tests/test_ids.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/usr/lib/python3.14/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_ids.py:7: in &lt;module&gt;
+    from irfix.ids import Registry, clamp_percent
+src/irfix/ids.py:5: in &lt;module&gt;
+    import irfix_no_such_module
+E   ModuleNotFoundError: No module named 'irfix_no_such_module'</error></testcase></testsuite></testsuites>

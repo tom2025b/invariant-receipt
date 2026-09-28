@@ -41,6 +41,7 @@ flowchart LR
    foreign output directory) exits 4 and still writes a `summary.json` that
    says REFUSED. argparse's own usage-error code (2) is remapped, because 2
    means INVALID.
+   **Confirmed by Tom 2026-09-28** and added to spec §8 as a dated amendment.
 4. **One fresh clone and one cargo target dir per mutation.** Observed while
    building: two copies sharing `CARGO_TARGET_DIR` made cargo run the FIRST
    copy's mutated binary for the second copy (the artifact hash ignores the
@@ -63,9 +64,20 @@ flowchart LR
    that selects nothing at baseline is `baseline_no_tests`.
 8. **`reason` is the machine code; `reason_detail` is the prose.** The §5
    example shows prose in `reason`; the §3 table shows codes. Codes win.
-9. **Failure signature = normalised location + message** exactly as §4 says.
-   The hashed text is stored (`failure_signature_basis`) so a reviewer sees
-   what "same way" meant.
+9. **Failure signature = named test + WHERE the failure fired** — *superseded
+   2026-09-28 by Tom's decision; the first build used location + message.* The
+   basis is the normalised `file:line` of the failing assertion/panic, not the
+   message: two breaks that trip the same assertion are ONE-WAY whatever values
+   their messages print. With no location in the runner's output, the fallback
+   is the message with every digit, hex value and quoted value stripped. The
+   receipt records `failure_signature_kind` (`location` | `message-normalised`)
+   and the hashed text (`failure_signature_basis`). Spec §4 amended.
+10. **Locations are expressed in the unmutated file's line numbers.** Found
+   while implementing 9: a Rust mutation that inserts one line vs two lines
+   above the unit-test module moved the same `assert_eq!` from line 91 to 92,
+   and raw `file:line` called that two ways. The mutation's own diff maps each
+   location back to the original numbering; a failure inside lines the
+   mutation inserted is named as such.
 
 ## Alternatives considered
 
@@ -79,8 +91,11 @@ flowchart LR
 
 - Rust runs rebuild each clone from scratch — slower on large projects; a
   shared, content-keyed cache is a possible later optimisation.
-- Two different breaks that trip the same assertion with *different values in
-  the message* count as two ways. That is what §4 says; it is flagged for Tom
-  as a place a later version may want to be stricter.
+- Two breaks that trip the same assertion with *different values in the
+  message* now count as ONE way (decision 9, Tom 2026-09-28), proven by the
+  `same-assertion-different-values` fixture in both languages.
+- `failure_signature_kind` was added to `receipt/1` as a required run field.
+  No V1 receipt had been published, so this is not treated as a version bump.
 
 **Signed:** max (lane E1) · 2026-09-28T16:45:00-04:00
+**Amended:** max (lane E1) · 2026-09-28T17:20:00-04:00 — decisions 3 and 9 confirmed/changed by Tom; decision 10 added

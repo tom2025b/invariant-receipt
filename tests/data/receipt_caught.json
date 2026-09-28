@@ -137,9 +137,10 @@
       "named_test_observed": true,
       "named_test_result": "failed",
       "oracle_matched": true,
-      "failure_signature_basis": "tests/test_ids.py:14: Failed\nFailed: DID NOT RAISE ValueError",
-      "failure_signature": "sha256:bb43d36d8796c92ed680b22a094ca33e5553ce7aae14cf6de9397c600163e012",
-      "failure_excerpt": "Failed: DID NOT RAISE ValueError\ndef test_rejects_duplicate_id():\n        \"\"\"The good test: checks both halves of the invariant.\"\"\"\n        registry = Registry()\n        registry.register(7)\n>       with pytest.raises(ValueError, match=\"duplicate\"):\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nE       Failed: DID NOT RAISE ValueError\n\ntests/test_ids.py:14: Failed"
+      "failure_signature_basis": "tests/test_ids.py::test_rejects_duplicate_id\n@ tests/test_ids.py:14",
+      "failure_signature": "sha256:ec18792d57781c5afd394bdd015309132d852ad78d079b11abfd1abad3e60eca",
+      "failure_excerpt": "Failed: DID NOT RAISE ValueError\ndef test_rejects_duplicate_id():\n        \"\"\"The good test: checks both halves of the invariant.\"\"\"\n        registry = Registry()\n        registry.register(7)\n>       with pytest.raises(ValueError, match=\"duplicate\"):\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nE       Failed: DID NOT RAISE ValueError\n\ntests/test_ids.py:14: Failed",
+      "failure_signature_kind": "location"
     }
   },
   "verdict": "CAUGHT",

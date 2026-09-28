@@ -15,6 +15,7 @@ pytestmark = [pytest.mark.e2e, pytest.mark.rust]
 MAIN = [
     "dup-ids-two-way",
     "dup-ids-one-way",
+    "same-assertion-different-values",
     "weak-test-gap",
     "invalid-cases",
     "patch-form",
@@ -27,6 +28,8 @@ EXPECTED = {
     ("dup-ids-two-way", "store-then-reject"): ("CAUGHT", "caught"),
     ("dup-ids-one-way", "drop-the-check"): ("CAUGHT", "caught"),
     ("dup-ids-one-way", "look-for-the-wrong-id"): ("CAUGHT", "caught"),
+    ("same-assertion-different-values", "store-once-then-reject"): ("CAUGHT", "caught"),
+    ("same-assertion-different-values", "store-twice-then-reject"): ("CAUGHT", "caught"),
     ("weak-test-gap", "drop-the-check"): ("SURVIVED", "named_test_passed"),
     ("invalid-cases", "compile-break"): ("INVALID", "compile_failed"),
     ("invalid-cases", "wrong-oracle"): ("INVALID", "oracle_mismatch"),
@@ -43,6 +46,7 @@ EXPECTED = {
 STATUSES = {
     "dup-ids-two-way": "TWO-WAY VERIFIED",
     "dup-ids-one-way": "ONE-WAY",
+    "same-assertion-different-values": "ONE-WAY",
     "weak-test-gap": "GAP FOUND",
     "invalid-cases": "INCOMPLETE",
     "patch-form": "ONE-WAY",
@@ -118,6 +122,22 @@ def test_nonzero_exit_from_another_test_is_still_survived(runs, runner):
     assert run["exit"] not in (0, None)
     assert run["failed"] == 1 and run["named_test_result"] == "passed"
     assert (r["verdict"], r["reason"]) == ("SURVIVED", "named_test_passed")
+
+
+@pytest.mark.parametrize("runner", ["nextest", "cargo"])
+def test_same_assertion_with_different_values_is_one_way(runs, runner):
+    """Spec §4 as amended 2026-09-28: the signature is WHERE the panic fired."""
+    _repo, results = runs
+    rs = receipts(results[runner][0])
+    a = rs[("same-assertion-different-values", "store-once-then-reject")]["mutation"]
+    b = rs[("same-assertion-different-values", "store-twice-then-reject")]["mutation"]
+    assert "left: 2" in a["run"]["failure_excerpt"]
+    assert "left: 3" in b["run"]["failure_excerpt"]  # the messages really differ
+    assert a["fingerprint"] != b["fingerprint"]
+    assert a["run"]["failure_signature"] == b["run"]["failure_signature"]
+    for r in rs.values():
+        if r["verdict"] == "CAUGHT":
+            assert r["mutation"]["run"]["failure_signature_kind"] == "location"
 
 
 def test_both_rust_parsers_agree_on_every_verdict_and_signature(runs):

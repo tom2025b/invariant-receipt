@@ -6,17 +6,88 @@ from invariant_receipt import signature, summary
 from invariant_receipt.observation import RunObservation
 from invariant_receipt.runners import cargo_text, junit
 
-
-def test_volatile_parts_are_stripped():
-    a = "thread 'tests::x' (805836) panicked at src/lib.rs:88:14:\nbad <Foo at 0x7f00aa> in /tmp/abc/def/file.rs 1.25s"
-    b = "thread 'tests::x' (123) panicked at src/lib.rs:88:14:\nbad <Foo at 0x55bb> in /home/q/r/file.rs 3.5s"
-    assert signature.basis(a) == signature.basis(b)
+NAMED = "tests::rejects_duplicate_id"
 
 
-def test_different_message_same_location_is_a_different_signature():
+def test_signature_is_the_location_not_the_message():
+    """Tom, 2026-09-28: same assertion location = same way, whatever values it prints."""
+    a = "thread 't' (805836) panicked at src/lib.rs:90:9:\nassertion `left == right` failed\n  left: 2\n right: 1"
+    b = "thread 't' (123) panicked at src/lib.rs:90:9:\nassertion `left == right` failed\n  left: 3\n right: 1"
+    ka, ba = signature.basis(NAMED, a)
+    kb, bb = signature.basis(NAMED, b)
+    assert ka == kb == signature.LOCATION
+    assert ba == bb == f"{NAMED}\n@ src/lib.rs:90"
+
+
+def test_different_assertion_location_is_a_different_signature():
     a = "thread 't' panicked at src/lib.rs:88:14:\nsecond registration must be rejected: ()"
-    b = "thread 't' panicked at src/lib.rs:91:9:\nregistry must hold one entry"
-    assert signature.signature(signature.basis(a)) != signature.signature(signature.basis(b))
+    b = "thread 't' panicked at src/lib.rs:90:9:\nregistry must hold one entry"
+    assert signature.signature(signature.basis(NAMED, a)[1]) != signature.signature(
+        signature.basis(NAMED, b)[1]
+    )
+
+
+def test_the_named_test_is_part_of_the_signature():
+    t = "thread 't' panicked at src/lib.rs:90:9:\nx"
+    assert signature.basis("tests::a", t)[1] != signature.basis("tests::b", t)[1]
+
+
+def test_location_inside_the_copy_is_made_relative():
+    t = "/tmp/invariant-receipt-abc/inv--m1/src/irfix/ids.py:11: ValueError"
+    kind, b = signature.basis(
+        "t.py::x", t, "ValueError: duplicate id 7", root="/tmp/invariant-receipt-abc/inv--m1"
+    )
+    assert (kind, b) == (signature.LOCATION, "t.py::x\n@ src/irfix/ids.py:11")
+
+
+def test_no_location_falls_back_to_the_message_with_values_stripped():
+    a = "Error: duplicate id 7 accepted at 0x7f00aa for 'alice' after 3 tries"
+    b = "Error: duplicate id 12 accepted at 0x55bb for 'bob' after 9 tries"
+    ka, ba = signature.basis(NAMED, a)
+    assert ka == signature.MESSAGE
+    assert ba == signature.basis(NAMED, b)[1]
+    assert not any(ch.isdigit() for ch in ba.split("\n", 1)[1])
+    assert "alice" not in ba
+
+
+DIFF_ABOVE = """diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -20,3 +20,5 @@ impl Registry {
+         if self.seen.contains(&id) {
++            self.seen.push(id);
++            self.seen.push(id);
+             return Err(format!("duplicate id {id}"));
+"""
+
+
+def test_location_is_mapped_back_to_the_unmutated_line_numbers():
+    """A mutation that inserts lines above the test shifts its assertion down;
+    the same assertion must still be the same place."""
+    shifted = "thread 't' panicked at src/lib.rs:92:9:\nleft: 3"
+    unshifted = "thread 't' panicked at src/lib.rs:90:9:\nleft: 2"
+    assert signature.basis(NAMED, shifted, diff=DIFF_ABOVE)[1] == f"{NAMED}\n@ src/lib.rs:90"
+    assert signature.basis(NAMED, unshifted)[1] == f"{NAMED}\n@ src/lib.rs:90"
+
+
+def test_a_failure_inside_the_inserted_lines_is_named_as_such():
+    t = "thread 't' panicked at src/lib.rs:21:13:\nboom"
+    assert signature.basis(NAMED, t, diff=DIFF_ABOVE)[1] == (
+        f"{NAMED}\n@ src/lib.rs:21 (inside lines the mutation inserted)"
+    )
+
+
+def test_lines_above_the_change_and_other_files_are_untouched():
+    assert signature.basis(NAMED, "panicked at src/lib.rs:5:1:\nx", diff=DIFF_ABOVE)[1].endswith(
+        "src/lib.rs:5"
+    )
+    assert signature.basis(NAMED, "panicked at tests/other.rs:92:1:\nx", diff=DIFF_ABOVE)[
+        1
+    ].endswith("tests/other.rs:92")
+
+
+def test_nothing_to_hash_gives_no_signature():
+    assert signature.basis(NAMED, "", None) == (None, None)
 
 
 def test_nextest_and_cargo_text_give_the_same_signature_for_the_same_failure():
@@ -24,21 +95,22 @@ def test_nextest_and_cargo_text_give_the_same_signature_for_the_same_failure():
     cargo_text.parse((DATA / "cargo_text" / "fail_single.txt").read_text(), t)
     n = RunObservation(parser="nextest-junit", exit=100)
     junit.parse_nextest(DATA / "nextest" / "fail_single.xml", n)
-    name = "tests::rejects_duplicate_id"
-    ct, nt = t.named(name)[1], n.named(name)[1]
-    assert signature.basis(ct.text, ct.message) == signature.basis(nt.text, nt.message)
-
-
-def test_pytest_basis_uses_location_and_message():
-    o = RunObservation(parser="junit-xml", exit=1)
-    junit.parse_pytest(
-        DATA / "pytest" / "fail_did_not_raise.xml",
-        o,
-        "tests/test_ids.py::test_rejects_duplicate_id",
+    ct, nt = t.named(NAMED)[1], n.named(NAMED)[1]
+    assert signature.basis(NAMED, ct.text, ct.message) == signature.basis(
+        NAMED, nt.text, nt.message
     )
-    case = o.named("tests/test_ids.py::test_rejects_duplicate_id")[1]
-    b = signature.basis(case.text, case.message)
-    assert b.startswith("tests/test_ids.py:") and "DID NOT RAISE" in b
+    assert signature.basis(NAMED, ct.text)[1] == f"{NAMED}\n@ src/lib.rs:88"
+
+
+def test_pytest_basis_is_the_crash_location():
+    o = RunObservation(parser="junit-xml", exit=1)
+    node = "tests/test_ids.py::test_rejects_duplicate_id"
+    junit.parse_pytest(DATA / "pytest" / "fail_did_not_raise.xml", o, node)
+    case = o.named(node)[1]
+    assert signature.basis(node, case.text, case.message) == (
+        signature.LOCATION,
+        f"{node}\n@ tests/test_ids.py:14",
+    )
 
 
 def r(mid, verdict, fp=None, sig=None):

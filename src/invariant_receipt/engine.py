@@ -141,15 +141,18 @@ def apply_mutation(
     return MutationFacts(True, changed, detail), files
 
 
-def _run_block(obs: RunObservation, test: str, decision: Decision) -> dict:
+def _run_block(
+    obs: RunObservation, test: str, decision: Decision, root: str | None, diff: str | None
+) -> dict:
     block = obs.to_json(test)
     result, case, _n = obs.named(test)
     block["named_test_observed"] = result in ("passed", "failed")
     block["named_test_result"] = result
     block["oracle_matched"] = decision.oracle_matched
-    basis = None
+    kind, basis = None, None
     if case is not None and result == "failed":
-        basis = signature.basis(case.text, case.message)
+        kind, basis = signature.basis(test, case.text, case.message, root, diff)
+    block["failure_signature_kind"] = kind
     block["failure_signature_basis"] = basis
     block["failure_signature"] = signature.signature(basis)
     block["failure_excerpt"] = case.text[:EXCERPT_CHARS] if case is not None and case.text else None
@@ -364,6 +367,7 @@ def run_invariant(ctx: RunContext, inv: Invariant) -> list[Pending]:
         )
         mclone: Path | None = None
         obs: RunObservation | None = None
+        full_diff: str | None = None
         try:
             if base_ok:
                 mut_out = inv_out / mut.id
@@ -374,6 +378,7 @@ def run_invariant(ctx: RunContext, inv: Invariant) -> list[Pending]:
                     ev.tool_error = ("copy_failed", f"mutation copy: {exc}")
                 if ev.tool_error is None:
                     facts, changed_files = apply_mutation(mclone, project_rel, mut, mblock)
+                    full_diff = sandbox.diff(mclone) if facts.changed else None
                     mblock.update(
                         applied=facts.applied,
                         changed=facts.changed,
@@ -419,7 +424,9 @@ def run_invariant(ctx: RunContext, inv: Invariant) -> list[Pending]:
 
         try:
             if obs is not None:
-                mblock["run"] = _run_block(obs, inv.test, decision)
+                mblock["run"] = _run_block(
+                    obs, inv.test, decision, str(mclone) if mclone else None, full_diff
+                )
         except Exception:
             reason, detail = _crash(f"recording mutation {mut.id!r}")
             decision = Decision(UNKNOWN, reason, detail)

@@ -183,7 +183,8 @@ def markdown(summary: dict, receipts: list[dict]) -> str:
                 ]
                 if run.get("failure_signature"):
                     lines += [
-                        f"- **Failure signature:** `{_short(run['failure_signature'], 16)}`, hashed from:",
+                        f"- **Failure signature:** `{_short(run['failure_signature'], 16)}` "
+                        f"(basis: {run.get('failure_signature_kind')}), hashed from:",
                         "",
                         _md_code(run["failure_signature_basis"] or ""),
                     ]
@@ -329,7 +330,8 @@ def html_page(summary: dict, receipts: list[dict], render_tool: dict) -> str:
                 parts.append(f"<p>{label}:</p><pre>{_e(text)}</pre>")
             if run and run.get("failure_signature_basis"):
                 parts.append(
-                    f"<details><summary>Failure signature <code>{_e(_short(run['failure_signature'], 16))}</code> — hashed from</summary>"
+                    f"<details><summary>Failure signature <code>{_e(_short(run['failure_signature'], 16))}</code> "
+                    f"(basis: {_e(run.get('failure_signature_kind'))}) — hashed from</summary>"
                     f"<pre>{_e(run['failure_signature_basis'])}</pre></details>"
                 )
             if run and run.get("failure_excerpt"):

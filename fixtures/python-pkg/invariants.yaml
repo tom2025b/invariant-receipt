@@ -33,6 +33,23 @@ invariants:
         replace: "if new_id + 1000 in self._seen:"
         expect: {outcome: fail}
 
+  # Two breaks that trip the SAME assertion with DIFFERENT values in its
+  # message ("assert 2 == 1" vs "assert 3 == 1") -> ONE-WAY. The signature is
+  # where the assertion fired, not what it printed (spec §4, amended 2026-09-28).
+  - invariant: same-assertion-different-values
+    test: tests/test_ids.py::test_rejects_duplicate_id
+    mutations:
+      - id: store-once-then-reject
+        file: src/irfix/ids.py
+        find: '            raise ValueError(f"duplicate id {new_id}")'
+        replace: "            self._seen.append(new_id)\n            raise ValueError(f\"duplicate id {new_id}\")"
+        expect: {outcome: fail, matches: "one entry"}
+      - id: store-twice-then-reject
+        file: src/irfix/ids.py
+        find: '            raise ValueError(f"duplicate id {new_id}")'
+        replace: "            self._seen.append(new_id)\n            self._seen.append(new_id)\n            raise ValueError(f\"duplicate id {new_id}\")"
+        expect: {outcome: fail, matches: "one entry"}
+
   # A weak test that never exercises the rule -> SURVIVED -> GAP FOUND.
   - invariant: weak-test-gap
     test: tests/test_ids.py::test_accepts_new_id

@@ -82,12 +82,13 @@
                 {"$ref": "#/$defs/run"},
                 {
                   "type": "object",
-                  "required": ["named_test_observed", "named_test_result", "oracle_matched", "failure_signature", "failure_signature_basis", "failure_excerpt"],
+                  "required": ["named_test_observed", "named_test_result", "oracle_matched", "failure_signature", "failure_signature_kind", "failure_signature_basis", "failure_excerpt"],
                   "properties": {
                     "named_test_observed": {"type": "boolean"},
                     "named_test_result": {"$ref": "#/$defs/named_result"},
                     "oracle_matched": {"type": ["boolean", "null"]},
                     "failure_signature": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+                    "failure_signature_kind": {"enum": ["location", "message-normalised", null]},
                     "failure_signature_basis": {"type": ["string", "null"]},
                     "failure_excerpt": {"type": ["string", "null"]}
                   }

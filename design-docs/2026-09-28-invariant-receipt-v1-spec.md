@@ -195,6 +195,23 @@ timings stripped). Two breaks that trip the same assertion with the same message
 way, not two. The word "proven" is not used anywhere: two examples do not prove every
 possible violation, and the status names say exactly what was shown.
 
+> **Amendment — 2026-09-28, Tom (via the coordinator, after the first build):** the
+> failure signature is the **named test plus WHERE the failure fired** — the file:line
+> of the failing assertion or panic, normalised — and **not the message text**. Two
+> breaks that trip the same assertion location are ONE-WAY whatever values their
+> messages print ("assert 2 == 1" and "assert 3 == 1" are the same check failing).
+> If the runner's output gives no location, the fallback is the message with every
+> digit, hex value and quoted value stripped. Each receipt records which basis was used
+> in `failure_signature_kind` (`location` or `message-normalised`), and the exact text
+> hashed in `failure_signature_basis`.
+>
+> *Implementation note:* "normalised" includes expressing the location in the
+> **unmutated** file's line numbers, using the mutation's own diff. Without that, a
+> mutation that inserts lines above a test in the same file — routine for Rust unit
+> tests — shifts the same assertion to a different line number and would count as a
+> second way. A failure that fires inside lines the mutation itself inserted is named
+> as such.
+
 ---
 
 ## 5 · What every receipt records
@@ -302,6 +319,12 @@ invalidates everything, but a mutation result is read directly from its one run.
 | Any SURVIVED (a real gap) | 1 — checked first, wins over everything |
 | Otherwise any UNKNOWN | 3 |
 | Otherwise any INVALID | 2 |
+| Refused before anything was tested — dirty tree, bad YAML, bad arguments *(amendment 2026-09-28)* | 4 |
+
+> **Amendment — 2026-09-28, Tom:** exit code **4 = refused**. A refused run still writes
+> a `summary.json` (and views) saying REFUSED, and clears any earlier receipts from the
+> output directory. Command-line usage errors from the argument parser also exit 4 —
+> never its default 2, which here means INVALID.
 
 CI should treat any non-zero code as a failure. The order puts the most important news
 first: a survived mutation is a defect in the test suite, and it is never hidden behind

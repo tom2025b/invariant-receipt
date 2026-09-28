@@ -18,6 +18,7 @@ pytestmark = pytest.mark.e2e
 MAIN = [
     "dup-ids-two-way",
     "dup-ids-one-way",
+    "same-assertion-different-values",
     "weak-test-gap",
     "invalid-cases",
     "patch-form",
@@ -30,6 +31,8 @@ EXPECTED = {
     ("dup-ids-two-way", "store-then-reject"): ("CAUGHT", "caught"),
     ("dup-ids-one-way", "drop-the-check"): ("CAUGHT", "caught"),
     ("dup-ids-one-way", "look-for-the-wrong-id"): ("CAUGHT", "caught"),
+    ("same-assertion-different-values", "store-once-then-reject"): ("CAUGHT", "caught"),
+    ("same-assertion-different-values", "store-twice-then-reject"): ("CAUGHT", "caught"),
     ("weak-test-gap", "drop-the-check"): ("SURVIVED", "named_test_passed"),
     ("invalid-cases", "compile-break"): ("INVALID", "compile_failed"),
     ("invalid-cases", "wrong-oracle"): ("INVALID", "oracle_mismatch"),
@@ -49,6 +52,7 @@ EXPECTED = {
 STATUSES = {
     "dup-ids-two-way": "TWO-WAY VERIFIED",
     "dup-ids-one-way": "ONE-WAY",
+    "same-assertion-different-values": "ONE-WAY",
     "weak-test-gap": "GAP FOUND",
     "invalid-cases": "INCOMPLETE",
     "patch-form": "ONE-WAY",
@@ -343,9 +347,43 @@ def test_a_directory_the_tool_did_not_create_is_never_emptied(tmp_path):
     assert (out / "precious.txt").read_text() == "keep me"
 
 
-def test_usage_error_exits_4_not_2(tmp_path):
-    proc = run_tool(["run"], tmp_path)
-    assert proc.returncode == 4
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["run"],
+        ["run", "x.yaml", "--repeat", "abc"],
+        ["bogus-command"],
+        ["run", "x.yaml", "--runner", "maven"],
+        [],
+    ],
+)
+def test_usage_errors_exit_4_never_2(tmp_path, args):
+    """Tom, 2026-09-28: refused = 4. argparse's own code 2 would read as INVALID."""
+    proc = run_tool(args, tmp_path)
+    assert proc.returncode == 4, proc.stderr
+
+
+def test_same_assertion_with_different_values_is_one_way(main_run):
+    """Spec §4 as amended 2026-09-28: the signature is WHERE the assertion fired."""
+    _repo, out, _ = main_run
+    rs = receipts(out)
+    a = rs[("same-assertion-different-values", "store-once-then-reject")]["mutation"]
+    b = rs[("same-assertion-different-values", "store-twice-then-reject")]["mutation"]
+    assert "assert 2 == 1" in a["run"]["failure_excerpt"]
+    assert "assert 3 == 1" in b["run"]["failure_excerpt"]  # the messages really differ
+    assert a["fingerprint"] != b["fingerprint"]
+    assert a["run"]["failure_signature"] == b["run"]["failure_signature"]
+    assert a["run"]["failure_signature_basis"] == (
+        "tests/test_ids.py::test_rejects_duplicate_id\n@ tests/test_ids.py:16"
+    )
+
+
+def test_every_catch_uses_the_location_basis(main_run):
+    _repo, out, _ = main_run
+    caught = [r for r in receipts(out).values() if r["verdict"] == "CAUGHT"]
+    assert len(caught) == 7
+    for r in caught:
+        assert r["mutation"]["run"]["failure_signature_kind"] == "location"
 
 
 def test_a_crash_in_the_tool_still_writes_unknown_receipts(tmp_path, monkeypatch):

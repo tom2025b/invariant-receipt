@@ -33,6 +33,23 @@ invariants:
         replace: "if self.seen.contains(&(id + 1000)) {"
         expect: {outcome: fail}
 
+  # Two breaks that trip the SAME assertion with DIFFERENT values in its
+  # message ("left: 2" vs "left: 3") -> ONE-WAY. The signature is where the
+  # assertion fired, not what it printed (spec §4, amended 2026-09-28).
+  - invariant: same-assertion-different-values
+    test: tests::rejects_duplicate_id
+    mutations:
+      - id: store-once-then-reject
+        file: src/lib.rs
+        find: '            return Err(format!("duplicate id {id}"));'
+        replace: "            self.seen.push(id);\n            return Err(format!(\"duplicate id {id}\"));"
+        expect: {outcome: fail, matches: "registry must hold one entry"}
+      - id: store-twice-then-reject
+        file: src/lib.rs
+        find: '            return Err(format!("duplicate id {id}"));'
+        replace: "            self.seen.push(id);\n            self.seen.push(id);\n            return Err(format!(\"duplicate id {id}\"));"
+        expect: {outcome: fail, matches: "registry must hold one entry"}
+
   # A weak test that never exercises the rule -> SURVIVED -> GAP FOUND.
   # Its name also selects a stronger sibling test that DOES fail, so the run
   # exits non-zero: other tests failing must not turn SURVIVED into CAUGHT.

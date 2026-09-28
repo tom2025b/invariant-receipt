@@ -115,4 +115,15 @@ mod tests {
     fn flaky_on_alternate_runs() {
         assert!(!flaky_should_fail(), "flaky test failed this time");
     }
+
+    /// Selected together with `register_accepts_new_id` by that name's
+    /// substring filter. When the rule breaks THIS test fails while the weak
+    /// one passes: the run exits non-zero, and the verdict must still be
+    /// SURVIVED, because only the named test's own result counts.
+    #[test]
+    fn register_accepts_new_id_then_rejects_it_again() {
+        let mut r = Registry::new();
+        assert!(r.register(9).is_ok());
+        assert!(r.register(9).is_err(), "a repeat must be rejected");
+    }
 }

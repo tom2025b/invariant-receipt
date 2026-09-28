@@ -109,6 +109,17 @@ def test_every_rust_fixture_case_gets_its_stated_verdict(runs, runner):
         assert r["source"]["tree_unchanged"] is True
 
 
+@pytest.mark.parametrize("runner", ["nextest", "cargo"])
+def test_nonzero_exit_from_another_test_is_still_survived(runs, runner):
+    """Key rule (b), end to end: the exit code is not the named test."""
+    _repo, results = runs
+    r = receipts(results[runner][0])[("weak-test-gap", "drop-the-check")]
+    run = r["mutation"]["run"]
+    assert run["exit"] not in (0, None)
+    assert run["failed"] == 1 and run["named_test_result"] == "passed"
+    assert (r["verdict"], r["reason"]) == ("SURVIVED", "named_test_passed")
+
+
 def test_both_rust_parsers_agree_on_every_verdict_and_signature(runs):
     _repo, results = runs
     nx, ct = receipts(results["nextest"][0]), receipts(results["cargo"][0])

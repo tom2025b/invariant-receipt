@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 4420295..7f9b82c 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -19,7 +19,7 @@ impl Registry {
+     }
+ 
+     pub fn register(&mut self, id: u32) -> Result<(), String> {
+-        if self.seen.contains(&id) {
++        if false {
+             return Err(format!("duplicate id {id}"));
+         }
+         self.seen.push(id);

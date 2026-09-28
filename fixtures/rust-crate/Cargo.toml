@@ -1,0 +1,10 @@
+[package]
+name = "ir-fixture"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# A deliberately tiny crate. It exists only so invariant-receipt's own tests
+# can break it on purpose and check the verdicts (spec §9). No dependencies,
+# so every disposable clone builds offline in about a second.
+[dependencies]

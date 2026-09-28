@@ -5,3 +5,7 @@ dist/
 *.egg-info/
 .pytest_cache/
 target/
+/receipts/
+/.venv-tool/
+src/invariant_receipt/_build.py
+.ruff_cache/

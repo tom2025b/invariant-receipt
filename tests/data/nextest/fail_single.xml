@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="nextest-run" tests="1" skipped="0" failures="1" errors="0" uuid="7be523c9-ae0d-44f7-ad6a-5b6c55d92347" timestamp="2026-09-28T15:39:54.872-04:00" time="0.016">
+    <testsuite name="ir-fixture" tests="1" skipped="0" errors="0" failures="1">
+        <testcase name="tests::rejects_duplicate_id" classname="ir-fixture" timestamp="2026-09-28T15:39:54.872-04:00" time="0.014">
+            <failure message="thread &apos;tests::rejects_duplicate_id&apos; (825257) panicked at src/lib.rs:88:14" type="test failure with exit code 101">thread &apos;tests::rejects_duplicate_id&apos; (825257) panicked at src/lib.rs:88:14:
+second registration must be rejected: ()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace</failure>
+            <system-out>
+running 1 test
+test tests::rejects_duplicate_id ... FAILED
+
+failures:
+
+failures:
+    tests::rejects_duplicate_id
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+</system-out>
+            <system-err>
+thread &apos;tests::rejects_duplicate_id&apos; (825257) panicked at src/lib.rs:88:14:
+second registration must be rejected: ()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+</system-err>
+        </testcase>
+    </testsuite>
+</testsuites>

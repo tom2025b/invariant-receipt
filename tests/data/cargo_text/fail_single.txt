@@ -1,0 +1,22 @@
+   Compiling ir-fixture v0.1.0 (/SCRATCH/mut)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.45s
+     Running unittests src/lib.rs (/mnt/builds2/targets/invariant-receipt/record/debug/deps/ir_fixture-91b44c34747aaa3c)
+
+running 1 test
+test tests::rejects_duplicate_id ... FAILED
+
+failures:
+
+---- tests::rejects_duplicate_id stdout ----
+
+thread 'tests::rejects_duplicate_id' (805836) panicked at src/lib.rs:88:14:
+second registration must be rejected: ()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    tests::rejects_duplicate_id
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--lib`

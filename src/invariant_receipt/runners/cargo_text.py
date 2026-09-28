@@ -51,15 +51,19 @@ class CargoTextError(ValueError):
     pass
 
 
+class _Ambiguous(Exception):
+    """The harness output cannot be attributed with certainty."""
+
+
 def _check_summary(binary: str, summary: re.Match, cases: list[TestCase], expected: int) -> None:
     passed = sum(1 for c in cases if c.result == "passed")
     failed = sum(1 for c in cases if c.result == "failed")
     ignored = sum(1 for c in cases if c.result == "skipped")
     want = (int(summary["passed"]), int(summary["failed"]), int(summary["ignored"]))
     if (passed, failed, ignored) != want or len(cases) != expected:
-        raise CargoTextError(
-            f"{binary}: summary says {want[0]} passed/{want[1]} failed/{want[2]} ignored of "
-            f"{expected}, but the harness lines show {passed}/{failed}/{ignored} of {len(cases)}"
+        raise _Ambiguous(
+            f"{binary}: its summary says {want[0]} passed/{want[1]} failed/{want[2]} ignored of "
+            f"{expected}, but the per-test lines show {passed}/{failed}/{ignored} of {len(cases)}"
         )
 
 
@@ -102,83 +106,124 @@ def _captured_text(region: list[str], failed: list[str]) -> dict[str, str]:
 
 
 def _block(lines: list[str], i: int, expected: int, binary: str, obs: RunObservation) -> int:
-    """Parse one binary's results starting after "running N tests". Returns the next index."""
+    """Parse one binary's results starting after "running N tests". Returns the next index.
+
+    Raises _Ambiguous whenever the block cannot be read with certainty. The
+    per-test lines read so far are kept in ``obs.cases`` as evidence, but an
+    ambiguous run yields no result for ANY test (``RunObservation.named``).
+    """
     cases: list[TestCase] = []
     seen: set[str] = set()
-    # Phase 1: the harness's own per-test lines, and nothing else.
-    while i < len(lines) and len(cases) < expected:
-        line = lines[i]
-        t = TEST_RE.match(line)
-        if t:
-            name = t["name"]
-            if name in seen:
-                raise CargoTextError(f"{binary}: the harness reported {name!r} twice")
-            seen.add(name)
-            res = t["res"]
-            result = "passed" if res == "ok" else "failed" if res == "FAILED" else "skipped"
-            cases.append(TestCase(name=name, result=result, group=binary))
+    where = binary or "a test binary"
+    try:
+        # Phase 1: the harness's own per-test lines, and nothing else.
+        while len(cases) < expected:
+            if i >= len(lines):
+                raise _Ambiguous(
+                    f"{where}: 'running {expected} tests' but the output ended after "
+                    f"{len(cases)} result line(s)"
+                )
+            line = lines[i]
+            t = TEST_RE.match(line)
+            if t:
+                name = t["name"]
+                if name in seen:
+                    raise _Ambiguous(f"{where}: a result for {name!r} appeared twice")
+                seen.add(name)
+                res = t["res"]
+                result = "passed" if res == "ok" else "failed" if res == "FAILED" else "skipped"
+                cases.append(TestCase(name=name, result=result, group=binary))
+                i += 1
+                continue
+            if BLOCK_RE.match(line):
+                # Typically a child test binary run by a test, printing to the
+                # inherited stdout: its block lands inside this one.
+                raise _Ambiguous(
+                    f"{where}: a second 'running N tests' began before this block's summary "
+                    f"(after {len(cases)} of {expected} result lines)"
+                )
+            if RESULT_RE.match(line) or RUNNING_RE.match(line):
+                raise _Ambiguous(
+                    f"{where}: the block ended or moved on after {len(cases)} of {expected} "
+                    f"result lines (the binary stopped early, or output was interleaved)"
+                )
+            if line.strip() and not SLOW_RE.match(line):
+                obs.notes.append(f"{where}: uncaptured output between result lines: {line[:120]!r}")
             i += 1
-            continue
-        if RESULT_RE.match(line) or BLOCK_RE.match(line) or RUNNING_RE.match(line):
-            break
-        if line.strip() and not SLOW_RE.match(line):
-            obs.notes.append(f"{binary}: uncaptured output between result lines: {line[:120]!r}")
-        i += 1
-    if len(cases) < expected:
-        obs.notes.append(
-            f"{binary or 'a test binary'}: 'running {expected} tests' but only {len(cases)} "
-            f"result line(s) before the output ended or moved on — the binary stopped early"
-        )
-        obs.cases.extend(cases)
-        return i
 
-    failed = [c.name for c in cases if c.result == "failed"]
-    if not failed:
-        j = _next_nonblank(lines, i)
-        m = RESULT_RE.match(lines[j]) if j < len(lines) else None
-        if m is None:
-            found = lines[j][:80] if j < len(lines) else "end of output"
-            raise CargoTextError(
-                f"{binary}: expected 'test result:' after {expected} results, found {found!r}"
+        failed = [c.name for c in cases if c.result == "failed"]
+        if not failed:
+            j = _next_nonblank(lines, i)
+            m = RESULT_RE.match(lines[j]) if j < len(lines) else None
+            if m is None:
+                found = lines[j][:80] if j < len(lines) else "end of output"
+                raise _Ambiguous(
+                    f"{where}: expected 'test result:' after {expected} results, found {found!r}"
+                )
+            _check_summary(where, m, cases, expected)
+            return j + 1
+
+        k = _closing_failures(lines, i, failed)
+        if k is None:
+            raise _Ambiguous(
+                f"{where}: the failures section never closed with a 'failures:' list naming "
+                f"exactly {failed}"
             )
-        _check_summary(binary, m, cases, expected)
-        obs.cases.extend(cases)
+        region = lines[i:k]
+        for line in region:
+            if BLOCK_RE.match(line):
+                raise _Ambiguous(
+                    f"{where}: a 'running N tests' line appeared inside the failures section, "
+                    f"before this block's summary"
+                )
+            t = TEST_RE.match(line)
+            if t and t["name"] in seen:
+                raise _Ambiguous(
+                    f"{where}: a second result line for {t['name']!r} appeared before this "
+                    f"block's summary"
+                )
+        texts = _captured_text(region, failed)
+        j = _next_nonblank(lines, k + 1 + len(failed))
+        _check_summary(where, RESULT_RE.match(lines[j]), cases, expected)
+        for c in cases:
+            c.text = texts.get(c.name, "")
         return j + 1
-
-    k = _closing_failures(lines, i, failed)
-    if k is None:
-        raise CargoTextError(
-            f"{binary}: the failures section never closed with a 'failures:' list naming "
-            f"{failed}; captured output cannot be told apart from the harness's own"
-        )
-    texts = _captured_text(lines[i:k], failed)
-    j = _next_nonblank(lines, k + 1 + len(failed))
-    _check_summary(binary, RESULT_RE.match(lines[j]), cases, expected)
-    for c in cases:
-        c.text = texts.get(c.name, "")
-    obs.cases.extend(cases)
-    return j + 1
+    finally:
+        obs.cases.extend(cases)
 
 
 def parse(output: str, obs: RunObservation) -> None:
-    """Fill ``obs`` from merged ``cargo test`` output. Raises CargoTextError."""
+    """Fill ``obs`` from merged ``cargo test`` output.
+
+    cargo-text is the FALLBACK parser (nextest is preferred). It refuses
+    ambiguity rather than guessing: any structural surprise sets
+    ``obs.ambiguous`` and the run gives no result for any test.
+    """
     lines = output.splitlines()
     binary = ""
     blocks = 0
     i = 0
-    while i < len(lines):
-        line = lines[i]
-        m = RUNNING_RE.match(line)
-        if m:
-            binary = m["what"]
+    try:
+        while i < len(lines):
+            line = lines[i]
+            m = RUNNING_RE.match(line)
+            if m:
+                binary = m["what"]
+                i += 1
+                continue
+            m = BLOCK_RE.match(line)
+            if m:
+                blocks += 1
+                i = _block(lines, i + 1, int(m["n"]), binary, obs)
+                continue
+            if TEST_RE.match(line):
+                raise _Ambiguous(
+                    f"a per-test result line appeared outside any block: {line[:120]!r}"
+                )
             i += 1
-            continue
-        m = BLOCK_RE.match(line)
-        if m:
-            blocks += 1
-            i = _block(lines, i + 1, int(m["n"]), binary, obs)
-            continue
-        i += 1
+    except _Ambiguous as exc:
+        obs.ambiguous = str(exc)
+        return
     if blocks == 0 and obs.exit not in (0, None):
         obs.collection_error = (
             "cargo test exited non-zero and no test binary reported 'running N tests'"

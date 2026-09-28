@@ -120,6 +120,12 @@ def baseline_problem(ev: Evidence) -> Decision | None:
             return Decision(INVALID, "timeout", f"{where} timed out after {run.seconds}s")
         if run.collection_error:
             return Decision(INVALID, "collection_failed", f"{where}: {run.collection_error}")
+        if run.ambiguous:
+            return Decision(
+                INVALID,
+                "baseline_not_stable",
+                f"{where}: ambiguous_harness_output: {run.ambiguous}",
+            )
         if run.discovered == 0:
             return Decision(INVALID, "baseline_no_tests", f"{where} discovered zero tests")
         result, _case, n = run.named(ev.test)
@@ -198,6 +204,12 @@ def decide(ev: Evidence) -> Decision:
         return Decision(INVALID, "timeout", f"the mutation run timed out after {run.seconds}s")
     if run.collection_error:
         return Decision(INVALID, "collection_failed", run.collection_error)
+    if run.ambiguous:
+        # Interleaved or unreconciled harness output: attribution is uncertain,
+        # so the named test's result is not observed — never passed or failed.
+        return Decision(
+            INVALID, "named_test_not_observed", f"ambiguous_harness_output: {run.ambiguous}"
+        )
     if run.discovered == 0:
         return Decision(INVALID, "zero_tests", "the mutation run discovered zero tests")
 

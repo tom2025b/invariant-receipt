@@ -92,7 +92,10 @@ flowchart TD
 ```
 
 Nothing is inferred from an exit code: only the named test's own result, read
-from the runner's per-test output, counts. Per invariant the summary is
+from the runner's per-test output, counts. Prefer cargo-nextest for Rust: the
+`cargo test` text fallback refuses to guess, so interleaved output (for example
+a test that runs another test binary) makes the run ambiguous and the named
+test `INVALID: named_test_not_observed`. Per invariant the summary is
 GAP FOUND, TWO-WAY VERIFIED (two catches with different mutation fingerprints
 **and** different failure signatures), ONE-WAY, or INCOMPLETE.
 

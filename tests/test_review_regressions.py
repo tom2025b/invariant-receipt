@@ -30,10 +30,12 @@ def test_nested_harness_log_in_captured_output_invents_no_result():
     test named tests::t, so it must not be observed."""
     obs = RunObservation(parser="cargo-text", exit=101)
     cargo_text.parse((DATA / "cargo_text" / "captured_nested_harness.txt").read_text(), obs)
-    assert obs.parse_error is None
+    # Only the harness's own line is kept as evidence; the nested "tests::t"
+    # never becomes a case. Since repair cycle 2 a nested block anywhere before
+    # the summary also makes the whole run ambiguous: no result for any test.
     assert [(c.name, c.result) for c in obs.cases] == [("tests::t_sibling", "failed")]
-    assert obs.named("tests::t")[0] == "not_observed"
-    assert "the nested run failed" in obs.named("tests::t_sibling")[1].text
+    assert obs.named("tests::t")[0] not in ("passed", "failed")
+    assert obs.ambiguous
 
 
 def test_nested_log_cannot_earn_caught_for_a_missing_test():
@@ -210,3 +212,57 @@ def test_non_run_usage_errors_touch_no_output(tmp_path, args):
     proc = run_tool(args, tmp_path)
     assert proc.returncode == 4
     assert not (tmp_path / "receipts").exists()
+
+
+# -- Re-check (R2) P1: a child test binary's output on the inherited stdout ------
+
+
+def _inherited() -> RunObservation:
+    obs = RunObservation(parser="cargo-text", exit=101)
+    cargo_text.parse((DATA / "cargo_text" / "inherited_child_harness.txt").read_text(), obs)
+    return obs
+
+
+def test_inherited_child_harness_output_is_ambiguous_never_a_result():
+    """REAL recording: parent tests::t PASSES; tests::t_sibling runs a child test
+    binary with Command::status(), whose own tests::t fails, and its block lands
+    inside the parent's. The parser must not attribute either result."""
+    obs = _inherited()
+    assert obs.named("tests::t")[0] not in ("passed", "failed")
+    assert obs.ambiguous and "running" in obs.ambiguous
+
+
+def test_inherited_child_output_cannot_earn_caught_for_a_passing_test():
+    green = RunObservation(parser="cargo-text", exit=0)
+    green.cases = [TestCase("tests::t", "passed"), TestCase("tests::t_sibling", "passed")]
+    ev = Evidence(
+        test="tests::t",
+        matches=None,
+        baseline_compile=CompileStep("ok"),
+        baseline_runs=[green],
+        mutation=MutationFacts(True, True, "", CompileStep("ok"), _inherited()),
+    )
+    d = decide(ev)
+    assert (d.verdict, d.reason) == ("INVALID", "named_test_not_observed")
+    assert d.detail.startswith("ambiguous_harness_output")
+
+
+def test_a_block_whose_lines_do_not_reconcile_with_its_summary_is_ambiguous():
+    text = (DATA / "cargo_text" / "pass_single.txt").read_text().replace("1 passed", "2 passed")
+    obs = RunObservation(parser="cargo-text", exit=0)
+    cargo_text.parse(text, obs)
+    assert obs.ambiguous
+    assert obs.named("tests::rejects_duplicate_id")[0] not in ("passed", "failed")
+
+
+def test_ambiguous_output_at_baseline_poisons_the_invariant():
+    d = baseline_problem(
+        Evidence(
+            test="tests::t",
+            matches=None,
+            baseline_compile=CompileStep("ok"),
+            baseline_runs=[_inherited()],
+        )
+    )
+    assert d is not None and (d.verdict, d.reason) == ("INVALID", "baseline_not_stable")
+    assert "ambiguous_harness_output" in d.detail

@@ -103,6 +103,29 @@ flowchart LR
    receipt as `UNKNOWN: internal_error` (earlier verdict kept in the detail)
    and writes a summary (exit 3).
 
+14. **cargo-text is a fallback that refuses ambiguity rather than guessing**
+   (Codex re-check of PR #1 at `b9e6108`). A sibling test that runs a child
+   test binary with ordinary `Command::status()` sends the child's whole
+   harness block to the inherited stdout, inside the parent's block; the
+   parser used to accept the child's `test t ... FAILED` although the parent's
+   own `test t ... ok` followed, and `decide()` said CAUGHT for a test that
+   passed. Now any structural surprise makes the run's harness output
+   *ambiguous*: a second `running N tests` before a block's summary (in the
+   result lines or the failures section), a block that stops early, a block
+   whose per-test lines do not reconcile with its own summary, a duplicate or
+   stray result line, or a failures section without its closing list. An
+   ambiguous run gives **no result for any test**; the named test is
+   `INVALID: named_test_not_observed` (detail `ambiguous_harness_output: …`)
+   at the mutation stage and `baseline_not_stable` at baseline. The per-test
+   lines read before the surprise stay in the receipt as evidence. Count
+   reconciliation also makes the named test's result consistent with its
+   block's summary by construction. **nextest remains the preferred runner**
+   (`runner: auto` picks it): it runs every test in its own process and
+   reports per test in JUnit, so a child's output is attributed to the test
+   that ran it. This supersedes the "residual risk" paragraph of decision 11
+   for the inherited-stdout case; the forged-closing-list case remains a
+   residual risk that now also ends in ambiguity whenever counts disagree.
+
 ## Alternatives considered
 
 - *Rewrite the project's nextest config to force our store.* Rejected: it
@@ -124,3 +147,4 @@ flowchart LR
 **Signed:** max (lane E1) · 2026-09-28T16:45:00-04:00
 **Amended:** max (lane E1) · 2026-09-28T17:20:00-04:00 — decisions 3 and 9 confirmed/changed by Tom; decision 10 added
 **Amended:** max (lane E1) · 2026-09-28T18:10:00-04:00 — repair cycle 1 after the Codex review: decision 7 tightened, decisions 11–13 added
+**Amended:** max (lane E1) · 2026-09-28T19:10:00-04:00 — repair cycle 2: decision 14 added

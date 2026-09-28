@@ -149,6 +149,7 @@
         "parser": {"enum": ["junit-xml", "nextest-junit", "cargo-text"]},
         "parse_error": {"type": ["string", "null"]},
         "collection_error": {"type": ["string", "null"]},
+        "ambiguous_harness_output": {"type": ["string", "null"]},
         "discovered": {"type": ["integer", "null"], "minimum": 0},
         "passed": {"type": "integer", "minimum": 0},
         "failed": {"type": "integer", "minimum": 0},

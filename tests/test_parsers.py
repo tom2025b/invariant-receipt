@@ -69,10 +69,12 @@ def test_cargo_compile_error_output_is_a_collection_error_not_a_result():
     assert obs.collection_error
 
 
-def test_cargo_summary_that_disagrees_with_test_lines_is_a_parse_error():
+def test_cargo_summary_that_disagrees_with_test_lines_is_ambiguous():
     text = (DATA / "cargo_text" / "pass_single.txt").read_text().replace("1 passed", "2 passed")
-    with pytest.raises(cargo_text.CargoTextError):
-        cargo_text.parse(text, RunObservation(parser="cargo-text", exit=0))
+    obs = RunObservation(parser="cargo-text", exit=0)
+    cargo_text.parse(text, obs)
+    assert obs.ambiguous and "summary says 2 passed" in obs.ambiguous
+    assert obs.named(NAMED)[0] == "ambiguous"
 
 
 def test_cargo_binary_that_crashes_mid_run_is_recorded_not_guessed():
@@ -83,8 +85,9 @@ def test_cargo_binary_that_crashes_mid_run_is_recorded_not_guessed():
     )
     obs = RunObservation(parser="cargo-text", exit=101)
     cargo_text.parse(text, obs)
-    assert obs.named(NAMED)[0] == "not_observed"
-    assert any("stopped early" in n for n in obs.notes)
+    assert obs.named("tests::a")[0] == "ambiguous"  # even the test that printed "ok"
+    assert "ended after 1 result line" in obs.ambiguous
+    assert [(c.name, c.result) for c in obs.cases] == [("tests::a", "passed")]  # kept as evidence
 
 
 def test_cargo_same_name_in_two_binaries_is_ambiguous():

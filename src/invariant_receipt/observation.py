@@ -16,7 +16,7 @@ NAMED_RESULTS = (
     "error",  # e.g. a pytest fixture/setup error: the test body never ran
     "timeout",  # the runner itself terminated the test for running too long
     "not_observed",  # no per-test result for the named test at all
-    "ambiguous",  # the name matched more than one test result
+    "ambiguous",  # the name matched more than one result, or the output was ambiguous
 )
 
 
@@ -44,6 +44,9 @@ class RunObservation:
     # evidence: that is UNKNOWN, never a verdict about the test.
     parse_error: str | None = None
     collection_error: str | None = None
+    # The harness output could not be attributed with certainty (cargo-text
+    # only: interleaved or unreconciled blocks). No test has a result then.
+    ambiguous: str | None = None
     cases: list[TestCase] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     log: str | None = None
@@ -68,6 +71,8 @@ class RunObservation:
 
     def named(self, test: str) -> tuple[str, TestCase | None, int]:
         """(result, case, number of matches) for the named test."""
+        if self.ambiguous:
+            return "ambiguous", None, 0
         matches = [c for c in self.cases if c.name == test]
         if not matches:
             return "not_observed", None, 0
@@ -85,6 +90,7 @@ class RunObservation:
             "parser": self.parser,
             "parse_error": self.parse_error,
             "collection_error": self.collection_error,
+            "ambiguous_harness_output": self.ambiguous,
             "discovered": self.discovered,
             "passed": self.count("passed"),
             "failed": self.count("failed"),

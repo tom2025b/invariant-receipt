@@ -66,10 +66,23 @@ def _tree_line(r: dict) -> str:
     return "not re-checked (the run did not finish)"
 
 
+def _needs_block(*texts: str | None) -> bool:
+    return any(t and ("\n" in t or "`" in t) for t in texts)
+
+
 def _edit_lines(m: dict) -> list[str]:
     if m["kind"] == "patch":
         return [f"patch `{m['patch']}` (sha256 {_short(m.get('patch_sha256'))})"]
+    if _needs_block(m["find"], m["replace"]):
+        return [f"`{m['file']}`: replace the first block below with the second"]
     return [f"`{m['file']}`: replace `{m['find']}` with `{m['replace']}`"]
+
+
+def _edit_blocks(m: dict) -> list[tuple[str, str]]:
+    """Multi-line or backticked find/replace text, shown verbatim as blocks."""
+    if m["kind"] == "patch" or not _needs_block(m["find"], m["replace"]):
+        return []
+    return [("find", m["find"] or ""), ("replace", m["replace"] or "")]
 
 
 # ---------------------------------------------------------------- markdown --
@@ -148,6 +161,8 @@ def markdown(summary: dict, receipts: list[dict]) -> str:
             if m.get("description"):
                 lines += [f"*{m['description']}*", ""]
             lines += [f"- **Edit:** {e}" for e in _edit_lines(m)]
+            for label, text in _edit_blocks(m):
+                lines += ["", f"{label}:", "", _md_code(text), ""]
             lines += [
                 f"- **Applied:** {m['applied']} · **changed:** {m['changed']}"
                 + (f" — {m['apply_detail']}" if m["apply_detail"] else ""),
@@ -310,6 +325,8 @@ def html_page(summary: dict, receipts: list[dict], render_tool: dict) -> str:
                     f"<li><b>Named test:</b> {_e(run['named_test_result'])}</li>",
                 ]
             parts.append("</ul>")
+            for label, text in _edit_blocks(m):
+                parts.append(f"<p>{label}:</p><pre>{_e(text)}</pre>")
             if run and run.get("failure_signature_basis"):
                 parts.append(
                     f"<details><summary>Failure signature <code>{_e(_short(run['failure_signature'], 16))}</code> — hashed from</summary>"

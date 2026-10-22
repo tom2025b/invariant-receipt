@@ -40,7 +40,7 @@ invariants:
                       )
         expect:
           outcome: fail
-          matches: "assert \\('UNKNOWN', 'baseline_not_stable'\\) == \\('INVALID', 'baseline_not_stable'\\)"
+          matches: "At index 0 diff: 'UNKNOWN' != 'INVALID'"
 
   - invariant: oracle-is-named-test-local
     description: Failure text from another test must never satisfy the named test's declared failure oracle.
@@ -98,7 +98,7 @@ invariants:
         replace: '        elif unchanged:'
         expect:
           outcome: fail
-          matches: "assert \\('CAUGHT', 'caught'\\) == \\('UNKNOWN', 'source_tree_changed'\\)"
+          matches: "At index 1 diff: 'internal_error' != 'source_tree_changed'"
       - id: falsely-record-tree-as-unchanged
         file: src/invariant_receipt/engine.py
         find: '                tree_unchanged=unchanged,'

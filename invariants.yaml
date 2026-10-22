@@ -1,0 +1,127 @@
+invariants:
+  - invariant: every-baseline-repeat-must-pass
+    description: Any failing baseline repetition must invalidate the invariant before a mutation can earn CAUGHT.
+    test: tests/test_verdict.py::test_baseline_red_on_any_repeat_is_not_stable
+    mutations:
+      - id: reject-a-passing-baseline-instead
+        file: src/invariant_receipt/verdict.py
+        find: |2-
+                  if result != "passed":
+                      return Decision(
+                          INVALID,
+                          "baseline_not_stable",
+                          f"{where}: the named test was {result} on the unmodified code",
+                      )
+        replace: |2-
+                  if result == "passed":
+                      return Decision(
+                          INVALID,
+                          "baseline_not_stable",
+                          f"{where}: the named test was {result} on the unmodified code",
+                      )
+        expect:
+          outcome: fail
+          matches: "assert 'run 2 of 3' in 'baseline run 1 of 3:"
+      - id: downgrade-an-unstable-baseline-to-unknown
+        file: src/invariant_receipt/verdict.py
+        find: |2-
+                  if result != "passed":
+                      return Decision(
+                          INVALID,
+                          "baseline_not_stable",
+                          f"{where}: the named test was {result} on the unmodified code",
+                      )
+        replace: |2-
+                  if result != "passed":
+                      return Decision(
+                          UNKNOWN,
+                          "baseline_not_stable",
+                          f"{where}: the named test was {result} on the unmodified code",
+                      )
+        expect:
+          outcome: fail
+          matches: "assert \\('UNKNOWN', 'baseline_not_stable'\\) == \\('INVALID', 'baseline_not_stable'\\)"
+
+  - invariant: oracle-is-named-test-local
+    description: Failure text from another test must never satisfy the named test's declared failure oracle.
+    test: tests/test_verdict.py::test_oracle_reads_only_the_named_tests_own_output
+    mutations:
+      - id: search-every-test-output
+        file: src/invariant_receipt/verdict.py
+        find: '    oracle_matched = oracle_matches(ev.matches, case.text)'
+        replace: '    oracle_matched = any(oracle_matches(ev.matches, c.text) for c in run.cases)'
+        expect:
+          outcome: fail
+          matches: "assert \\('CAUGHT', 'caught'\\) == \\('INVALID', 'oracle_mismatch'\\)"
+      - id: bypass-oracle-rejection
+        file: src/invariant_receipt/verdict.py
+        find: '    if not oracle_matched:'
+        replace: '    if False:'
+        expect:
+          outcome: fail
+          matches: "assert \\('CAUGHT', 'caught'\\) == \\('INVALID', 'oracle_mismatch'\\)"
+
+  - invariant: exit-code-preserves-worst-observed-outcome
+    description: Aggregate exit status must prioritize SURVIVED over UNKNOWN and UNKNOWN over INVALID.
+    test: tests/test_signature_summary.py::test_exit_code_order
+    mutations:
+      - id: let-unknown-mask-survived
+        file: src/invariant_receipt/summary.py
+        find: |2-
+              if "SURVIVED" in verdicts:
+                  return EXIT_SURVIVED
+        replace: |2-
+              if "SURVIVED" in verdicts:
+                  return EXIT_UNKNOWN
+        expect:
+          outcome: fail
+          matches: "assert 3 == 1"
+      - id: let-invalid-mask-unknown
+        file: src/invariant_receipt/summary.py
+        find: |2-
+              if "UNKNOWN" in verdicts:
+                  return EXIT_UNKNOWN
+        replace: |2-
+              if "UNKNOWN" in verdicts:
+                  return EXIT_INVALID
+        expect:
+          outcome: fail
+          matches: "assert 2 == 3"
+
+  - invariant: original-tree-changes-poison-all-receipts
+    description: Any change to the original working tree during a run must make every receipt UNKNOWN and record the tree as changed.
+    test: tests/test_e2e_python.py::test_a_test_that_writes_to_the_original_tree_makes_everything_unknown
+    mutations:
+      - id: invert-tree-change-guard
+        file: src/invariant_receipt/engine.py
+        find: '        elif not unchanged:'
+        replace: '        elif unchanged:'
+        expect:
+          outcome: fail
+          matches: "assert \\('CAUGHT', 'caught'\\) == \\('UNKNOWN', 'source_tree_changed'\\)"
+      - id: falsely-record-tree-as-unchanged
+        file: src/invariant_receipt/engine.py
+        find: '                tree_unchanged=unchanged,'
+        replace: '                tree_unchanged=True,'
+        expect:
+          outcome: fail
+          matches: "assert True is False"
+
+  - invariant: cargo-fallback-preserves-failure-evidence
+    description: The cargo-test text fallback must classify the named failure and retain that test's own panic text.
+    test: tests/test_parsers.py::test_cargo_single_failure_keeps_the_tests_own_panic_text
+    mutations:
+      - id: misclassify-failed-test-as-skipped
+        file: src/invariant_receipt/runners/cargo_text.py
+        find: '                result = "passed" if res == "ok" else "failed" if res == "FAILED" else "skipped"'
+        replace: '                result = "passed" if res == "ok" else "skipped"'
+        expect:
+          outcome: fail
+          matches: "assert \\('ambiguous', 0, 0\\) == \\('failed', 1, 1\\)"
+      - id: discard-named-test-panic-text
+        file: src/invariant_receipt/runners/cargo_text.py
+        find: '            c.text = texts.get(c.name, "")'
+        replace: '            c.text = ""'
+        expect:
+          outcome: fail
+          matches: "assert 'second registration must be rejected' in ''"

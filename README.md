@@ -122,7 +122,7 @@ It builds from `git archive HEAD` and stamps version, commit and build time;
 ```
 python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'   # or: pip install pytest pyyaml jsonschema ruff
 .venv/bin/ruff check src tests && .venv/bin/ruff format --check src tests
-CARGO_TARGET_DIR=/mnt/builds2/targets/invariant-receipt buildlock .venv/bin/python -m pytest
+.venv/bin/python -m pytest
 ```
 
 The suite needs `cargo` and `cargo-nextest` (the Rust fixture runs under
@@ -133,6 +133,53 @@ clone. Read the pass count: `0 passed` is a failure.
 Fixture projects live in `fixtures/` (a Rust crate and a Python package); the
 end-to-end tests copy each into a fresh git repository and run the real tool.
 Recorded real runner output for the parser tests is in `tests/data/`.
+
+## Self-dogfooding
+
+The repository's own [`invariants.yaml`](invariants.yaml) uses Invariant
+Receipt to protect five of the tool's honesty and safety rules:
+
+- every requested baseline repeat must pass;
+- an oracle may use only the named test's own failure evidence;
+- aggregate exit status must preserve the worst observed outcome;
+- any change to the original tree poisons every receipt; and
+- the `cargo test` fallback must retain the named failure's evidence.
+
+Run the declarations from a clean checkout on Linux:
+
+```
+invariant-receipt run invariants.yaml --repeat 3
+```
+
+These are explicit regression proofs, not a claim of complete coverage. A new
+mutation is added only when it represents a concrete way one of the declared
+rules could break.
+
+## Future milestones
+
+These milestones describe direction, not promised dates. Each one must keep
+the V1 evidence contract fail-closed: JSON remains authoritative, mutations
+remain user-declared, and only the named test's observed result can earn
+CAUGHT.
+
+1. **Release hardening.** Run the self-dogfooding declarations in the Linux CI
+   gate, make installation and version provenance reproducible, and publish a
+   first tagged release with its generated artifacts.
+2. **Parser resilience.** Expand the recorded-output corpus across supported
+   pytest, nextest, and `cargo test` versions while preserving refusal on
+   ambiguous, missing, zero-test, compile, collection, and timeout outcomes.
+3. **Safer authoring.** Add a non-mutating validation command that checks
+   schema, paths, unique find matches, patch applicability, runner selection,
+   and named-test discovery before an evidence run begins.
+4. **CI and review integration.** Publish `receipt.json` as the primary CI
+   artifact and derive Markdown, HTML, and concise pull-request summaries from
+   that same contract without creating a second source of truth.
+5. **Additional runners by evidence quality.** Consider another language only
+   when its runner can identify the exact named test and preserve that test's
+   own failure text as reliably as the Rust and Python implementations.
+6. **Optional orchestration and views.** Explore failure-atlas, MCP, dashboard,
+   or GUI integration only as consumers of receipts; they must not invent
+   mutations, reinterpret verdicts, or weaken disposable-copy isolation.
 
 ## Not in V1
 

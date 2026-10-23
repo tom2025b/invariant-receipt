@@ -1,5 +1,7 @@
 # Invariant Receipt
 
+[![CI](https://github.com/tom2025b/invariant-receipt/actions/workflows/ci.yml/badge.svg)](https://github.com/tom2025b/invariant-receipt/actions/workflows/ci.yml)
+
 > Your test is green. Want a receipt showing it can turn red?
 
 Invariant Receipt breaks your code on purpose — in exactly the ways you
@@ -186,3 +188,12 @@ CAUGHT.
 No automatic mutation generation, no AI, no MCP server/dashboard/GUI, no
 languages beyond Rust and Python, no uncommitted-changes support, no
 failure-atlas integration, no public release.
+
+## Security
+
+Do not disclose suspected vulnerabilities in a public issue. Follow the
+private reporting instructions in [`SECURITY.md`](SECURITY.md).
+
+## License
+
+Licensed under the [Apache License, Version 2.0](LICENSE).

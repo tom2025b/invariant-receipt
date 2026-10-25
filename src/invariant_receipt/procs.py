@@ -34,6 +34,20 @@ class ProcResult:
 
 
 def _kill_group(proc: subprocess.Popen) -> None:
+    if os.name == "nt":
+        # Windows has no killpg. taskkill /T is the supported way to include
+        # descendants; proc.kill remains the fallback if taskkill is absent.
+        subprocess.run(
+            ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        if proc.poll() is None:
+            proc.kill()
+        proc.wait(timeout=5)
+        return
     for sig in (signal.SIGTERM, signal.SIGKILL):
         try:
             os.killpg(proc.pid, sig)
@@ -64,6 +78,11 @@ def run_logged(
     start = time.monotonic()
     with open(log_path, "wb") as log:
         try:
+            popen_group = (
+                {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+                if os.name == "nt"
+                else {"start_new_session": True}
+            )
             proc = subprocess.Popen(
                 argv,
                 cwd=cwd,
@@ -71,7 +90,7 @@ def run_logged(
                 stdin=subprocess.DEVNULL,
                 stdout=log,
                 stderr=subprocess.STDOUT,
-                start_new_session=True,
+                **popen_group,
             )
         except OSError as exc:
             return ProcResult(
@@ -92,10 +111,11 @@ def run_logged(
             _kill_group(proc)
         else:
             # The direct child exited; make sure nothing it spawned lingers.
-            try:
-                os.killpg(proc.pid, signal.SIGKILL)
-            except (ProcessLookupError, PermissionError):
-                pass
+            if os.name != "nt":
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except (ProcessLookupError, PermissionError):
+                    pass
     seconds = round(time.monotonic() - start, 3)
     output = log_path.read_bytes().decode("utf-8", errors="replace")
     return ProcResult(

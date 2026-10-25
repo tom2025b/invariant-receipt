@@ -11,6 +11,10 @@ named test was seen failing for the declared reason, and every piece of
 evidence behind that answer. The spec is
 [`design-docs/2026-09-28-invariant-receipt-v1-spec.md`](design-docs/2026-09-28-invariant-receipt-v1-spec.md).
 
+Unlike `mutmut` or `cargo-mutants`, this is not a mutation-coverage score or an
+automatic search for weak tests. It is a proof of one specific rule: for each
+explicit break you declare, did the one named test fail for the declared reason?
+
 ```mermaid
 flowchart LR
     A["<b>invariants.yaml</b><br/>rule, test,<br/>explicit breaks"] --> B["<b>Disposable clone</b><br/>of committed HEAD"]
@@ -30,6 +34,7 @@ flowchart LR
 invariant-receipt run inv.yaml               # every invariant
 invariant-receipt run inv.yaml --repeat 3    # baseline 3x (mutations always run once)
 invariant-receipt run inv.yaml --only NAME   # one invariant (repeatable)
+invariant-receipt validate inv.yaml          # preflight authoring; applies no mutation
 invariant-receipt render receipts/           # rebuild the views from the JSON
 invariant-receipt --version
 ```
@@ -39,6 +44,12 @@ Other `run` options: `--timeout S` (each build and each run, default 600),
 `--keep` (keep the copies), `--runner auto|pytest|nextest|cargo` (override),
 `--python PATH` (interpreter that runs pytest).
 
+`validate` reads the current YAML and patch files, then uses a disposable clone
+of committed `HEAD` to check paths, exact-one `find` matches, patch
+applicability, runner selection, and named-test discovery. It writes no receipt
+and applies no mutation, so run it while authoring to catch declarations that
+have drifted before paying for an evidence run.
+
 | Outcome across all receipts | Exit |
 |---|---|
 | every mutation CAUGHT | 0 |
@@ -46,6 +57,10 @@ Other `run` options: `--timeout S` (each build and each run, default 600),
 | otherwise any UNKNOWN | 3 |
 | otherwise any INVALID | 2 |
 | refused before testing (dirty tree, bad YAML, bad arguments) | 4 |
+
+The decision order and process exit codes answer different questions: UNKNOWN
+is checked before INVALID when classifying evidence, while exit `2` remains
+INVALID and exit `3` remains UNKNOWN so automation can distinguish them.
 
 ## What you write
 
@@ -66,6 +81,38 @@ mutations:
 Several invariants go under `invariants:`. Optional keys: `description`,
 `project` (directory, relative to the YAML, where the runner runs), `runner`,
 and for Rust `target: lib | test:NAME | bin:NAME`. Unknown keys are refused.
+
+Because `find` must match exactly once, source edits can make a declaration go
+stale; the eventual evidence run reports that mutation as INVALID. Use
+`invariant-receipt validate inv.yaml` after code changes to find that drift
+without applying mutations.
+
+## A real CAUGHT receipt
+
+This excerpt is from the checked-in pytest fixture receipt at
+[`tests/data/receipt_caught.json`](tests/data/receipt_caught.json). The full JSON
+also records the commit, tree hashes, commands, timings, diff, logs, and failure
+excerpt.
+
+```json
+{
+  "invariant": "dup-ids-two-way",
+  "test": "tests/test_ids.py::test_rejects_duplicate_id",
+  "mutation": {
+    "id": "drop-the-check",
+    "fingerprint": "sha256:4c1e20dcbf67ec11b9d317ff830534a136ab35757238a867d8d535a35a0ba51d",
+    "run": {
+      "named_test_observed": true,
+      "named_test_result": "failed",
+      "oracle_matched": true,
+      "failure_signature": "sha256:ec18792d57781c5afd394bdd015309132d852ad78d079b11abfd1abad3e60eca"
+    }
+  },
+  "verdict": "CAUGHT",
+  "reason": "caught",
+  "reason_detail": "the named test ran and failed as declared"
+}
+```
 
 ## Verdicts, in the fixed decision order
 
@@ -97,9 +144,12 @@ Nothing is inferred from an exit code: only the named test's own result, read
 from the runner's per-test output, counts. Prefer cargo-nextest for Rust: the
 `cargo test` text fallback refuses to guess, so interleaved output (for example
 a test that runs another test binary) makes the run ambiguous and the named
-test `INVALID: named_test_not_observed`. Per invariant the summary is
-GAP FOUND, TWO-WAY VERIFIED (two catches with different mutation fingerprints
-**and** different failure signatures), ONE-WAY, or INCOMPLETE.
+test `INVALID: named_test_not_observed`. Per invariant the summary is GAP FOUND
+(a declared break survived), TWO-WAY VERIFIED (two independent breaks were
+caught through different failure locations), ONE-WAY (caught, but with only
+one independent failure path), or INCOMPLETE (some evidence was not usable).
+The short labels keep CI summaries compact; these definitions are the meaning
+behind them.
 
 ## Safety
 
@@ -164,15 +214,14 @@ the V1 evidence contract fail-closed: JSON remains authoritative, mutations
 remain user-declared, and only the named test's observed result can earn
 CAUGHT.
 
-1. **Release hardening.** Run the self-dogfooding declarations in the Linux CI
+1. **Safer authoring.** Keep the non-mutating `validate` preflight aligned with
+   the evidence runner as schemas, runners, and declaration forms evolve.
+2. **Release hardening.** Run the self-dogfooding declarations in the Linux CI
    gate, make installation and version provenance reproducible, and publish a
    first tagged release with its generated artifacts.
-2. **Parser resilience.** Expand the recorded-output corpus across supported
+3. **Parser resilience.** Expand the recorded-output corpus across supported
    pytest, nextest, and `cargo test` versions while preserving refusal on
    ambiguous, missing, zero-test, compile, collection, and timeout outcomes.
-3. **Safer authoring.** Add a non-mutating validation command that checks
-   schema, paths, unique find matches, patch applicability, runner selection,
-   and named-test discovery before an evidence run begins.
 4. **CI and review integration.** Publish `receipt.json` as the primary CI
    artifact and derive Markdown, HTML, and concise pull-request summaries from
    that same contract without creating a second source of truth.
@@ -187,7 +236,7 @@ CAUGHT.
 
 No automatic mutation generation, no AI, no MCP server/dashboard/GUI, no
 languages beyond Rust and Python, no uncommitted-changes support, no
-failure-atlas integration, no public release.
+failure-atlas integration, and no tagged release yet.
 
 ## Security
 

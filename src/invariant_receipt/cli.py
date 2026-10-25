@@ -1,6 +1,7 @@
 """Command line (spec §8).
 
     invariant-receipt run inv.yaml [--repeat N] [--only NAME] [--timeout S] ...
+    invariant-receipt validate inv.yaml [--only NAME] [--timeout S] ...
     invariant-receipt render receipts/
     invariant-receipt --version
 
@@ -20,7 +21,7 @@ import tempfile
 import traceback
 from pathlib import Path
 
-from . import engine, sandbox, spec
+from . import engine, sandbox, spec, validation
 from . import summary as summ
 from .identity import build_identity, describe
 from .receipt import validate_receipt, validate_summary, write_json
@@ -90,6 +91,31 @@ def _parser() -> argparse.ArgumentParser:
         "--python",
         default=sys.executable,
         help="interpreter used to run pytest (default: this one)",
+    )
+    v = sub.add_parser(
+        "validate",
+        help="check an invariants file against committed HEAD without applying mutations",
+    )
+    v.add_argument("spec", type=Path, help="invariants YAML file (inside a git repository)")
+    v.add_argument(
+        "--only",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="validate only this invariant (repeatable)",
+    )
+    v.add_argument(
+        "--timeout", type=float, default=600.0, help="seconds allowed for runner discovery"
+    )
+    v.add_argument(
+        "--workdir", type=Path, default=None, help="where the disposable validation copy is made"
+    )
+    v.add_argument("--keep", action="store_true", help="keep the disposable copy and logs")
+    v.add_argument(
+        "--runner", choices=spec.RUNNERS, default=None, help="override every invariant's runner"
+    )
+    v.add_argument(
+        "--python", default=sys.executable, help="interpreter used to discover pytest tests"
     )
     rr = sub.add_parser(
         "render",
@@ -388,6 +414,63 @@ def cmd_render(args, tool: dict) -> int:
     return summary["exit_code"]
 
 
+def cmd_validate(args) -> int:
+    """Preflight authoring against committed HEAD; write no receipt or view."""
+    try:
+        if args.timeout <= 0:
+            raise Refused("bad_arguments", "--timeout must be positive")
+        invariants = spec.load(args.spec)
+        if args.only:
+            names = {i.name for i in invariants}
+            missing = [name for name in args.only if name not in names]
+            if missing:
+                raise Refused("bad_arguments", f"--only names no invariant: {', '.join(missing)}")
+            invariants = [i for i in invariants if i.name in args.only]
+        repo = sandbox.repo_root(args.spec.resolve().parent)
+        commit = sandbox.head_commit(repo)
+        for invariant in invariants:
+            if _rel_inside(invariant.project_dir, repo) is None:
+                raise Refused(
+                    "bad_spec",
+                    f"invariant {invariant.name!r}: project is outside repository {repo}",
+                )
+        if args.workdir is not None:
+            if not args.workdir.is_dir():
+                raise Refused("bad_arguments", "--workdir must be an existing directory")
+            if _rel_inside(args.workdir, repo) is not None:
+                raise Refused("bad_arguments", "--workdir must be outside the repository")
+        results, kept = validation.validate_all(
+            repo,
+            commit,
+            invariants,
+            args.runner,
+            args.python,
+            args.timeout,
+            args.workdir,
+            args.keep,
+        )
+    except (Refused, spec.SpecError, sandbox.SandboxError, OSError) as exc:
+        detail = exc.detail if isinstance(exc, Refused) else str(exc)
+        print(f"invariant-receipt: validation failed: {detail}", file=sys.stderr)
+        return summ.EXIT_REFUSED
+    except Exception as exc:
+        print(f"invariant-receipt: validation error: {_one_line(exc)}", file=sys.stderr)
+        return summ.EXIT_UNKNOWN
+
+    for result in results:
+        if result.valid:
+            print(
+                f"VALID {result.invariant} — {result.runner}; mutations applicable; named test green"
+            )
+        else:
+            print(f"INVALID {result.invariant}")
+            for error in result.errors:
+                print(f"  - {error}")
+    if kept is not None:
+        print(f"invariant-receipt: kept validation copy at {kept}", file=sys.stderr)
+    return 0 if all(result.valid for result in results) else summ.EXIT_REFUSED
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     tool = build_identity()
@@ -400,6 +483,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "run":
         return cmd_run(args, tool)
+    if args.command == "validate":
+        return cmd_validate(args)
     if args.command == "render":
         return cmd_render(args, tool)
     _parser().print_help(sys.stderr)

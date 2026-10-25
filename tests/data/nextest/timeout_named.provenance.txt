@@ -1,0 +1,10 @@
+producer: cargo-nextest 0.9.149
+command: <populated by scripts/capture-nextest-timeout.sh>
+profile: capture-timeout
+slow-timeout.period: 1s
+slow-timeout.terminate-after: 1
+slow-timeout.on-timeout: fail
+retries: 0
+captured-at: <ISO-8601 timestamp populated by capture script>
+host: <OS, architecture, and rustc version populated by capture script>
+artifact-sha256: <SHA-256 populated by capture script>

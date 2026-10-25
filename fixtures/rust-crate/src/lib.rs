@@ -116,6 +116,18 @@ mod tests {
         assert!(!flaky_should_fail(), "flaky test failed this time");
     }
 
+    /// Capture-only fixture for a real nextest slow-timeout JUnit report.
+    /// Ordinary test runs return immediately; the capture script opts in to
+    /// the hang and relies on nextest to terminate this process.
+    #[test]
+    fn hang() {
+        if std::env::var_os("IR_CAPTURE_NEXTEST_TIMEOUT").is_some() {
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(60));
+            }
+        }
+    }
+
     /// Selected together with `register_accepts_new_id` by that name's
     /// substring filter. When the rule breaks THIS test fails while the weak
     /// one passes: the run exits non-zero, and the verdict must still be

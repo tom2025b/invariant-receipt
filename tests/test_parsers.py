@@ -1,11 +1,15 @@
 """Parsers against RECORDED real output (spec §6) — cargo test text, nextest
-JUnit and pytest JUnit, captured from the fixture projects on 2026-09-28."""
+JUnit and pytest JUnit. The original corpus was captured on 2026-09-28; newer
+artifacts carry adjacent provenance files."""
+
+import re
 
 import pytest
 from conftest import DATA
 
-from invariant_receipt.observation import RunObservation
+from invariant_receipt.observation import RunObservation, TestCase
 from invariant_receipt.runners import cargo_text, junit
+from invariant_receipt.verdict import INVALID, CompileStep, Evidence, MutationFacts, decide
 
 NAMED = "tests::rejects_duplicate_id"
 PY_NAMED = "tests/test_ids.py::test_rejects_duplicate_id"
@@ -152,6 +156,49 @@ def test_nextest_timeout_is_not_a_failure(tmp_path):
     obs = RunObservation(parser="nextest-junit", exit=100)
     junit.parse_nextest(p, obs)
     assert obs.named("t")[0] == "timeout"
+
+
+def test_nextest_timeout_is_invalid_even_when_oracle_matches():
+    artifact = DATA / "nextest" / "timeout_named.xml"
+    if not artifact.is_file():
+        pytest.skip(
+            "real cargo-nextest 0.9.149 timeout artifact has not been captured; "
+            "run scripts/capture-nextest-timeout.sh on Linux"
+        )
+
+    test = "tests::hang"
+    obs = RunObservation(parser="nextest-junit", exit=100)
+    junit.parse_nextest(artifact, obs)
+    named_result, case, matches = obs.named(test)
+    assert (named_result, matches) == ("timeout", 1)
+    assert case is not None
+
+    # The oracle deliberately matches real timeout evidence. Timeout refusal
+    # must happen before oracle matching can promote the run to CAUGHT.
+    oracle = r"(?i)time(?:d|) out"
+    assert re.search(oracle, case.text)
+    baseline = RunObservation(
+        parser="nextest-junit",
+        exit=0,
+        cases=[TestCase(name=test, result="passed", group=case.group)],
+    )
+    decision = decide(
+        Evidence(
+            test=test,
+            matches=oracle,
+            baseline_runs=[baseline],
+            mutation=MutationFacts(
+                applied=True,
+                changed=True,
+                compile=CompileStep("ok"),
+                run=obs,
+            ),
+        )
+    )
+
+    assert decision.verdict == INVALID
+    assert decision.reason == "timeout"
+    assert decision.verdict != "CAUGHT"
 
 
 # ------------------------------------------------------------------ pytest
